@@ -1,289 +1,624 @@
-## Step - 0 : Remove an existing version of geth
-1. Remove the current Geth package : ```sudo apt remove --purge -y ethereum ```
-2. Clean up the residual files :
-```
-sudo apt autoremove -y
-sudo apt clean
-```
-3. Verify Geth is uninstalled: ``` geth version ```
-4. Locate any remaining Geth binaries: ``` which geth ```
-5. Manually remove the Geth binary : ``` sudo rm -rf /usr/local/bin/geth ```
-6. Verify that Geth is no longer present: ``` geth version ```
-   
-## Step - 1 : Commands for installing Geth on Ubuntu
-1. Navigate to the directory where you want to download Geth: ``` cd /usr/local/bin ```
-2. Check the Architecture : ``` dpkg --print-architecture ```
-3. Download the specific version of [Geth 1.12](https://geth.ethereum.org/downloads) :
-``` sudo wget https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.12.0-e501b3b0.tar.gz ```
-5. Extract the downloaded tar file: ``` sudo tar -xvf geth-linux-amd64-1.12.0-e501b3b0.tar.gz ```
-6. Move the extracted binary to a directory in your PATH: ``` sudo mv geth-linux-amd64-1.12.0-e501b3b0/geth /usr/local/bin/geth ```
-7. Remove the downloaded and extracted files: ``` sudo rm -rf geth-linux-amd64-1.12.0-e501b3b0.tar.gz geth-linux-amd64-1.12.0-e501b3b0 ```
-8. Verify the installation :  ``` geth version ```
-   
-==============Old Steps for Installing Geth===================
-```
-sudo apt-get update
-sudo apt install -y software-properties-common
-sudo add-apt-repository -y ppa:ethereum/ethereum
-sudo apt update
-sudo apt-get install ethereum
-sudo apt-get upgrade geth
-```
-## Step - 2 : Check the version of Geth on the Terminal
-```
-geth version
-```
-![Geth_version](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_version.png)
+# Private Ethereum Blockchain Setup on Windows using Geth 1.17 + Prysm (PoS)
 
-## Step - 3 : Create a Private Ethereum Network
-**1. Create a folder named, private_ethereum_setup :**
-```
-mkdir private_ethereum_setup
-```
-**2. Create 2 subfolders named node1 and node2 in the folder **private_ethereum_setup****
-```
-cd private_ethereum_setup   
-mkdir node1 node2
-```  
-![Folder_structure](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/folder_0.png)
-  
-**3. Create 2 accounts in the folder corresponding to node1 and node2**
-```
-geth --datadir "node1" account new
-```
-![Node_1](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_1_account.png)
-```
-geth --datadir "node2" account new
-```
-![Node_2](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_2_account.png)
-Note : 
-- This command will prompt you to enter a passphrase and generates Public and Private Keys.
-- For future reference, save the keypair in the file [**network_keypair.txt**](https://github.com/LifnaJos/private_ethereum_setup/blob/main/private_ethereum_setup/network_keypair)
-- **Important step:**
-  - For each node, save the password in a file, **password.txt** :
-  - Make a note of the public addresses of both node1 and node2, they will be required later
-    - [Node_1](https://github.com/LifnaJos/private_ethereum_setup/blob/main/private_ethereum_setup/node1/password)
-    - [Node_2](https://github.com/LifnaJos/private_ethereum_setup/blob/main/private_ethereum_setup/node2/password)
+A Windows-friendly setup for a local private Ethereum network using **Geth 1.17** as the execution client and **Prysm** as the consensus client.
 
-**4. Create a **genesis.json** file in the folder, **private_ethereum_setup****
+> **Note:** Geth 1.17+ only supports Proof-of-Stake (PoS) networks. The older Clique (Proof of Authority) mining setup does not work with Geth 1.17. This guide uses PoS with Prysm.
 
-Note:
-- Download the [genesis.json](https://github.com/LifnaJos/private_ethereum_setup/blob/main/private_ethereum_setup/genesis.json) file from the repository
-- Edit the **alloc** parameter in the file with the public keys of the accounts created
-- The images have a slight error. Do not remove the "0x" when editing the alloc public addresses with your own instead use the entire address with "0x.......etc"
+This README covers a **three-node devnet** — three Geth execution nodes, three Prysm beacon nodes, and three Prysm validators that peer and sync on the same Windows machine.
 
-![alloc](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/alloc_field.png)
+---
 
-- Edit the **extradata** withe public key of the signer.
-  - NOTE:
-    - The public Address of the Mining node (the signer) should be entered here.
-    - Also remove the beginning two characters "0x" before entering the public address otherwise it will result in error
-- Here, its with the public key of Node 1
+## Requirements
 
-![extra](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/extradata.png)
+- Windows 10 / 11
+- PowerShell
+- `geth.exe` v1.17.x
+- `beacon-chain.exe` from Prysm
+- `validator.exe` from Prysm
+- `prysmctl.exe` from Prysm
+- Node.js + npm (for sending transactions with `send_tx.js`)
 
-**5. Initialize the nodes with the genesis file**
+---
+
+## Download Binaries
+
+1. **Geth** — download from https://geth.ethereum.org/downloads
+2. **Prysm** — download from https://github.com/OffchainLabs/prysm/releases
+   - `beacon-chain-v...-windows-amd64.exe`
+   - `validator-v...-windows-amd64.exe`
+   - `prysmctl-v...-windows-amd64.exe`
+
+Place all files in:
 ```
-geth init --datadir node1 genesis.json
-```
-![Node_1](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_1_init.png)
-```
-geth init --datadir node2 genesis.json
-```
-![Node_2](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_2_init.png)
-
-**6. For configuring the bootnode**
-- As we are following geth 1.12 stable version, bootnode needs to be installed separately
-```
-sudo add-apt-repository -y ppa:ethereum/ethereum
-sudo apt-get update
-sudo apt-get install bootnode
-```
-- Create a key for the bootnode and save it to boot.key in the folder
-```
-bootnode -genkey boot.key
-```
-![Folder_1](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/folder_1.png)
-
-## Step - 4 :  Establish a Peer-Peer Connection between the nodes along with the bootnode
-**1. On the first Terminal, Use **boot.key** to run the bootnode :**
-```
-bootnode -nodekey boot.key -verbosity 9 -addr :30305
-```
-Make a note of the enode address, it will be required later.
-![Bootnode](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/bootnode_running.png)
-
-**Note:**
-- Open separate terminals for each node, leaving the bootnode running on the first terminal.
-- Bootnode is waiting for the Peers to join the network
-- In each terminal, run the following command (replacing node1 with node2, node3 wherever appropriate)
-- Give each node a **different** IDs for --port and authrpc.port
-- The **account address** and **password** file for node 1, node 2, and node 3 must be provided.
-- Provide the enode details of the bootnode generated in the step while running Node1 and Node2
-
-**2. On the second Terminal, Run Node 1**
-```
-geth --datadir node1 --port 30306 --bootnodes enode://2bccaf4b4cf5d10f0e8b49cb68b3c3ad867b6cb40596c78a8b216ae8dd62a174457b9d8839364074047f749914e84b999b92485e988510edca153341a6f6107a@127.0.0.1:0?discport=30305 --networkid 123454321 --unlock 0x98608ADf9c785d54f40cDcf6700E990771b19226 --password node1/password.txt --authrpc.port 8551 --miner.etherbase 0x98608ADf9c785d54f40cDcf6700E990771b19226 --mine
-```
-- Change the enode://.....discport=30305 to the one which we made a note of earlier.
-- Change the public address after --unlock and --miner.ethbase to the node1 public address noted in the first terminal.
-
-![Node_1_run](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_1_run.png)
-
-- Node 1 starts mining
-
-![Node_1_mine](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_1_mining.png)
-
-**Note:**
-- In this experiment, we are making Node 1, as the validator to mine the blocks. So, explicitly mention that miner.etherbase with the public address of Node 1.
-- The mining starts as soon as this node is up.
-
-**3. On the third Terminal, Run Node 2**
-```
-geth --datadir node2 --port 30307 --bootnodes enode://2bccaf4b4cf5d10f0e8b49cb68b3c3ad867b6cb40596c78a8b216ae8dd62a174457b9d8839364074047f749914e84b999b92485e988510edca153341a6f6107a@127.0.0.1:0?discport=30305 --networkid 123454321 --unlock 0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C --password node2/password.txt --authrpc.port 8552
-```
-Change the enode://.....discport=30305 to the one which we made a note of earlier.
-Change the public address after --unlock to the node2 public address noted in the first terminal.
-
-![Node_2_run](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_2_run.png)
-
-- Node 2, receives the mined details on its terminal
-
-![Node_2_update](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/node_2_update.png)
-
-- Bootnode track the logs of Peers in the network
-
-![Bootnod_update](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/boot_node_update.png)
-  
-## Step - 5 : Exploring the network by attaching Javascript console to Node 1
-
-Open the fourth terminal and attach the JavaScript Console with Node 1
-
-```
-geth attach node1/geth.ipc
-```
-![Geth](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_ipc.png)
-
-**1. Fetch network status** : 
-```
-net.peerCount
-```
-**2. To list the nodes in the network** : 
-```
-eth.accounts
-```
-**3. To list the nodes in the network** : 
-```
-eth.accounts[0]
+C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 ```
 
-**4. To fetch the number of blocks mined** : 
-```
-eth.blockNumber
-```
+Rename them to:
+- `geth.exe`
+- `beacon-chain.exe`
+- `validator.exe`
+- `prysmctl.exe`
 
-**5. To check the balance of the accounts in wei** : 
+---
 
-```
-eth.getBalance(eth.accounts[0])
-```
-Enter your own public address always
-``` 
-eth.getBalance("0x98608ADf9c785d54f40cDcf6700E990771b19226")
-```
+## Open PowerShell in the Project Folder
 
-**6. To check the balance of the accounts in ether** : 
-```
-web3.fromWei(eth.getBalance("0x98608ADf9c785d54f40cDcf6700E990771b19226"), "ether")
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 ```
 
-**Note:** 0x98608ADf9c785d54f40cDcf6700E990771b19226 - Public address of the account in Node 1
+Check Geth works:
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_1.png)
-
-**7. To fetch the details of the lastest mined block** : 
-```
-eth.getBlock(eth.blockNumber)
+```powershell
+.\geth.exe version
 ```
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_2.png)
+Install Node dependencies if you plan to send transactions:
 
-**7. To fetch the details of a specific block** : 
-```
-eth.getBlock(<enter a blockNo >)
-```
-
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_3.png)
-
-**8. To check the account balance of the peer machine, provide their Public Key** : 
-```
-web3.fromWei(eth.getBalance("0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C"), "ether")
+```powershell
+npm install
 ```
 
-**Note:** 0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C : Public address of the account in Node 2.
+---
 
-**9. Fetch the details of the peers in the network** : admin.peers
+## Create a Funded Account
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_4.png)
+The repo already contains the required files in `private_ethereum_setup`:
+- `genesis.json` — PoS-ready Geth genesis
+- `chain-config.yaml` — Prysm chain config
+- `jwt.hex` — JWT secret for Geth-Prysm auth
 
-**10. Perform Transactions between peers in the network** : 
-```
-eth.sendTransaction({from:"0x98608ADf9c785d54f40cDcf6700E990771b19226", to:"0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C", value: web3.toWei(10, "ether"), gas:30000})
-```
+Create a password file and a new keystore account. This account will receive the genesis funds and is used by `send_tx.js`.
 
-**Note:** The response will the hash of the transaction
+```powershell
+"node1" | Out-File -FilePath "node1\password-clean" -Encoding ASCII -NoNewline
 
-**11. Check the balances of sender and receiver** 
-```
-web3.fromWei(eth.getBalance("0x98608ADf9c785d54f40cDcf6700E990771b19226"), "ether")
-```
-``` 
-web3.fromWei(eth.getBalance("0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C"), "ether")
-```
-  
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_5.png)
-
-**12. To check the details of the transaction on Node 1 Terminal**
-
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_node_1_explore.png)
-
-**13. To get the details of the block in which the transaction is added** :
-```
-web3.eth.getTransaction("0x97dcc5cd3f903ad988faea6998795118df5e7105876fd7776c53c2021233b1ab")
+.\geth.exe account new --datadir node1 --password node1\password-clean
 ```
 
-**Note:** 0x97dcc5cd3f903ad988faea6998795118df5e7105876fd7776c53c2021233b1ab : Hash of the Transaction
+Save the printed address (it looks like `0x...`). You must edit `private_ethereum_setup\genesis.json` to fund this address and keep `extradata` as `0x`.
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_6.png)
+Example `genesis.json`:
 
-**14. To check the contents in the Mempool - Transaction Pool** : 
+```json
+{
+  "config": {
+    "chainId": 12345,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "muirGlacierBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "arrowGlacierBlock": 0,
+    "grayGlacierBlock": 0,
+    "mergeNetsplitBlock": 0,
+    "terminalTotalDifficulty": 0,
+    "terminalTotalDifficultyPassed": true,
+    "shanghaiTime": 0,
+    "cancunTime": 0,
+    "blobSchedule": {
+      "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+      "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+      "osaka": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 }
+    }
+  },
+  "difficulty": "0",
+  "gasLimit": "800000000",
+  "baseFeePerGas": "0x7",
+  "extradata": "0x",
+  "alloc": {
+    "0x014BFF6c76d88e815075c0323C3904Fe635c2325": {
+      "balance": "100000000000000000000000"
+    }
+  }
+}
 ```
-txpool.content
+
+> Replace the `alloc` address with the address printed by `account new`. Keep `extradata` as `0x` (do not put the address there; it would make the genesis hex length odd).
+
+---
+
+## Clean Previous State
+
+Run in PowerShell (admin rights not required):
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator') } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+
+@('node1/geth','node2/geth','node3/geth','beacondata1','beacondata2','beacondata3','validator_wallet1','validator_wallet2','validator_wallet3') | ForEach-Object {
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $_
+}
+Remove-Item -Force *.log -ErrorAction SilentlyContinue
 ```
 
-**Note:** Perform a set of 5 transactions as discussed in the above step and then, check the mempool
+---
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_8.png)
+## Generate 3-Validator PoS Genesis
 
-**15. To check the status of the Mempool - Transaction Pool** : 
+Use a future Unix timestamp so the chain does not start before the validators are ready.
+
+```powershell
+$futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+
+.\prysmctl.exe testnet generate-genesis `
+  --num-validators=3 `
+  --output-ssz=genesis.ssz `
+  --chain-config-file=chain-config.yaml `
+  --geth-genesis-json-in=genesis.json `
+  --geth-genesis-json-out=genesis-pos.json `
+  --fork=deneb `
+  --genesis-time=$futureTime
 ```
-txpool.status
+
+This creates:
+- `genesis.ssz` — beacon chain genesis state
+- `genesis-pos.json` — finalized Geth genesis with correct fork timestamps
+
+---
+
+## Initialize the Three Geth Datadirs
+
+```powershell
+.\geth.exe init --datadir=node1 --state.scheme hash genesis-pos.json
+.\geth.exe init --datadir=node2 --state.scheme hash genesis-pos.json
+.\geth.exe init --datadir=node3 --state.scheme hash genesis-pos.json
 ```
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_7.png)
+> **Important:** Use `--state.scheme hash` with Geth 1.17 for this local PoS setup.
 
-**10. To check the transactions initiated by a client, which are in the pool** : 
+---
+
+## Start Geth Node 1
+
+PowerShell window 1:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\geth.exe `
+  --datadir node1 `
+  --port 30306 `
+  --networkid 123454321 `
+  --syncmode full `
+  --state.scheme hash `
+  --http --http.port 18545 `
+  --http.api eth,net,web3,engine,admin `
+  --http.corsdomain="*" --http.vhosts="*" --http.addr 127.0.0.1 `
+  --authrpc.port 8551 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
+  --authrpc.jwtsecret jwt.hex `
+  --ipcpath geth1.ipc
 ```
-txpool.contentFrom("0x98608ADf9c785d54f40cDcf6700E990771b19226")
+
+Wait until you see `HTTP server started endpoint=127.0.0.1:18545`, then fetch Node 1's enode:
+
+```powershell
+$enode1 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:18545).Trim().Trim('"')
+Write-Host "Node1 enode: $enode1"
 ```
-**Note:** 
-- 0x98608ADf9c785d54f40cDcf6700E990771b19226 : Public address of the account in Node
 
-![Geth_explore](https://github.com/LifnaJos/private_ethereum_setup/blob/main/images/geth_explore_9.png)
+> **Important:** If the enode contains your external/public IP, replace that IP with `127.0.0.1` in the `--bootnodes` strings below. The enode must use a reachable IP for Nodes 2 and 3 on this machine.
 
-## Acknowledgement
-* [Go Ethereum Documentation : End-to-end example](https://geth.ethereum.org/docs/fundamentals/private-network#end-to-end-example)
+Example fix:
 
-* [Go Ethereum - Github Developers Community](https://github.com/ethereum/go-ethereum/issues/27850) for helping me in resolving the issues in performing the mining on Private Ethereum Network setup using Geth.
+```powershell
+$enode1Local = $enode1 -replace '@\d+\.\d+\.\d+\.\d+:', '@127.0.0.1:'
+Write-Host "Node1 local enode: $enode1Local"
+```
 
-* [Basic Writing & Formatting Syntax](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)
+---
+
+## Start Geth Nodes 2 and 3
+
+PowerShell window 2 (replace `<ENODE1>` with the local enode value):
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\geth.exe `
+  --datadir node2 `
+  --port 30307 `
+  --networkid 123454321 `
+  --syncmode full `
+  --state.scheme hash `
+  --http --http.port 18546 `
+  --http.api eth,net,web3,engine,admin `
+  --http.corsdomain="*" --http.vhosts="*" --http.addr 127.0.0.1 `
+  --authrpc.port 8552 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
+  --authrpc.jwtsecret jwt.hex `
+  --ipcpath geth2.ipc `
+  --bootnodes "<ENODE1>"
+```
+
+PowerShell window 3:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\geth.exe `
+  --datadir node3 `
+  --port 30308 `
+  --networkid 123454321 `
+  --syncmode full `
+  --state.scheme hash `
+  --http --http.port 18547 `
+  --http.api eth,net,web3,engine,admin `
+  --http.corsdomain="*" --http.vhosts="*" --http.addr 127.0.0.1 `
+  --authrpc.port 8553 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
+  --authrpc.jwtsecret jwt.hex `
+  --ipcpath geth3.ipc `
+  --bootnodes "<ENODE1>"
+```
+
+> **Why `--ipcpath`?** Each Geth node needs a unique IPC pipe. Without it, Node 2/3 try to open the default pipe, which Node 1 already owns, causing `Access is denied`.
+
+---
+
+## Verify Execution Peering
+
+PowerShell window 4:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18545
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18546
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18547
+```
+
+If the counts are 0, manually connect them (use the real local enodes):
+
+```powershell
+$enode1 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:18545).Trim().Trim('"') -replace '@\d+\.\d+\.\d+\.\d+:', '@127.0.0.1:'
+$enode2 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:18546).Trim().Trim('"') -replace '@\d+\.\d+\.\d+\.\d+:', '@127.0.0.1:'
+$enode3 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:18547).Trim().Trim('"') -replace '@\d+\.\d+\.\d+\.\d+:', '@127.0.0.1:'
+
+.\geth.exe attach --exec "admin.addPeer('$enode2')" http://127.0.0.1:18545
+.\geth.exe attach --exec "admin.addPeer('$enode3')" http://127.0.0.1:18545
+.\geth.exe attach --exec "admin.addPeer('$enode1')" http://127.0.0.1:18546
+.\geth.exe attach --exec "admin.addPeer('$enode3')" http://127.0.0.1:18546
+.\geth.exe attach --exec "admin.addPeer('$enode1')" http://127.0.0.1:18547
+.\geth.exe attach --exec "admin.addPeer('$enode2')" http://127.0.0.1:18547
+```
+
+---
+
+## Start the Three Beacon Nodes
+
+First start Beacon 1 and capture its peer ID. PowerShell window 5:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\beacon-chain.exe `
+  --datadir beacondata1 `
+  --min-sync-peers 0 `
+  --genesis-state genesis.ssz `
+  --chain-config-file chain-config.yaml `
+  --contract-deployment-block 0 `
+  --deposit-contract 0x0000000000000000000000000000000000000000 `
+  --rpc-host 127.0.0.1 --rpc-port 4000 `
+  --grpc-gateway-host 127.0.0.1 --grpc-gateway-port 3500 `
+  --execution-endpoint http://127.0.0.1:8551 `
+  --jwt-secret jwt.hex `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --minimum-peers-per-subnet 0 `
+  --disable-staking-contract-check `
+  --interop-eth1data-votes `
+  --p2p-tcp-port 13000 --p2p-udp-port 12000 `
+  --accept-terms-of-use
+```
+
+Wait for it to log its peer ID (look for `Running node with peer id of 16Uiu2HAm...`). Then fetch it:
+
+```powershell
+# Wait ~10 seconds after startup, then run:
+$b1id = (Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/identity' -TimeoutSec 10).data.peer_id
+Write-Host "Beacon1 peer id: $b1id"
+```
+
+If the identity endpoint fails, read it from the log:
+
+```powershell
+Select-String -Path "beacondata1\*.log" -Pattern "Running node with peer id of" | Select-Object -Last 1
+```
+
+PowerShell window 6 (replace `<BEACON1_PEER_ID>`):
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\beacon-chain.exe `
+  --datadir beacondata2 `
+  --min-sync-peers 0 `
+  --genesis-state genesis.ssz `
+  --chain-config-file chain-config.yaml `
+  --contract-deployment-block 0 `
+  --deposit-contract 0x0000000000000000000000000000000000000000 `
+  --rpc-host 127.0.0.1 --rpc-port 4001 `
+  --grpc-gateway-host 127.0.0.1 --grpc-gateway-port 3501 `
+  --execution-endpoint http://127.0.0.1:8552 `
+  --jwt-secret jwt.hex `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --minimum-peers-per-subnet 0 `
+  --disable-staking-contract-check `
+  --interop-eth1data-votes `
+  --p2p-tcp-port 13001 --p2p-udp-port 12001 `
+  --peer /ip4/127.0.0.1/tcp/13000/p2p/<BEACON1_PEER_ID> `
+  --force-clear-db `
+  --accept-terms-of-use
+```
+
+PowerShell window 7:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\beacon-chain.exe `
+  --datadir beacondata3 `
+  --min-sync-peers 0 `
+  --genesis-state genesis.ssz `
+  --chain-config-file chain-config.yaml `
+  --contract-deployment-block 0 `
+  --deposit-contract 0x0000000000000000000000000000000000000000 `
+  --rpc-host 127.0.0.1 --rpc-port 4002 `
+  --grpc-gateway-host 127.0.0.1 --grpc-gateway-port 3502 `
+  --execution-endpoint http://127.0.0.1:8553 `
+  --jwt-secret jwt.hex `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --minimum-peers-per-subnet 0 `
+  --disable-staking-contract-check `
+  --interop-eth1data-votes `
+  --p2p-tcp-port 13002 --p2p-udp-port 12002 `
+  --peer /ip4/127.0.0.1/tcp/13000/p2p/<BEACON1_PEER_ID> `
+  --force-clear-db `
+  --accept-terms-of-use
+```
+
+---
+
+## Start the Three Validators
+
+PowerShell window 8:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet1 --wallet-dir validator_wallet1 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4000 `
+  --interop-num-validators 1 --interop-start-index 0 `
+  --accept-terms-of-use
+```
+
+PowerShell window 9:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet2 --wallet-dir validator_wallet2 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4001 `
+  --interop-num-validators 1 --interop-start-index 1 `
+  --accept-terms-of-use
+```
+
+PowerShell window 10:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet3 --wallet-dir validator_wallet3 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4002 `
+  --interop-num-validators 1 --interop-start-index 2 `
+  --accept-terms-of-use
+```
+
+---
+
+## Verify the 3-Node Network
+
+Check execution blocks on all nodes:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:18546' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:18547' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+Check beacon sync:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/syncing'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/syncing'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/syncing'
+```
+
+Check execution peering:
+
+```powershell
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18545
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18546
+.\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18547
+```
+
+---
+
+## Send a Transaction and Verify Propagation
+
+Run `send_tx.js` against Node 1 (it already uses port `18545`):
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+node send_tx.js
+```
+
+Expected output:
+
+```text
+From: 0x...
+Balance before: 100000.0 ETH
+
+--- PoS consensus checks before sending ---
+Beacon client: Prysm/v7.1.0 (windows amd64)
+Beacon syncing: false | optimistic: false
+Current fork: 0x20000093 | epoch: 0
+Execution block: 20 | difficulty: 0 | totalDifficulty: n/a | nonce: 0x0000000000000000 | miner: 0x...
+
+Transaction hash: 0x...
+Mined in execution block: 21
+Gas used: 21000
+
+--- PoS consensus details for the mined block ---
+Execution block hash: 0x...
+Execution difficulty: 0 | nonce: 0x0000000000000000 | miner: 0x...
+Execution extraData: 0x...
+Beacon slot: 21 | epoch: 0
+Beacon proposer index: 0
+Beacon parent root: 0x...
+Beacon state root: 0x...
+Beacon block root: 0x...
+
+Balance after sender: 99989.999968499999853 ETH
+Balance of recipient: 10.0 ETH
+```
+
+After the transaction is mined, verify the recipient balance on all three nodes:
+
+```powershell
+$body = '{"jsonrpc":"2.0","method":"eth_getBalance","params":["RECIPIENT_ADDRESS","latest"],"id":1}'
+
+Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body $body
+Invoke-RestMethod -Uri 'http://127.0.0.1:18546' -Method POST -ContentType 'application/json' -Body $body
+Invoke-RestMethod -Uri 'http://127.0.0.1:18547' -Method POST -ContentType 'application/json' -Body $body
+```
+
+All three should return the same non-zero balance, proving the transaction propagated and state is consistent across the network.
+
+### How this proves PoS
+
+`send_tx.js` prints consensus evidence from the beacon node:
+
+- **Beacon client**: Prysm is running and in sync
+- **Current fork**: Deneb (`0x20000093`)
+- **Execution difficulty**: 0 — no mining happens
+- **Execution nonce**: 0 — no PoW nonce is required
+- **Block miner**: the validator fee recipient, not a mining pool
+- **Beacon slot / epoch / proposer index**: show the block was proposed by a validator selected by the PoS protocol
+- **Beacon state root / block root**: cryptographic anchors of the consensus state
+
+Because the execution block has zero difficulty and zero nonce, yet the chain advances and includes transactions, the network is clearly running Proof-of-Stake (Gasper) consensus, not Proof-of-Work.
+
+---
+
+## Network Keypair Reference
+
+| Node | Public Address | Notes |
+|------|----------------|-------|
+| Funded sender | the address printed by `account new` | Created earlier, funded in `private_ethereum_setup\genesis.json`, used by `send_tx.js` |
+| Recipient | the address you send to in `send_tx.js` | Receives test transfers |
+| Fee recipient | `0x98608ADf9c785d54f40cDcf6700E990771b19226` | Used by Prysm validator for block rewards |
+
+---
+
+## Notes
+
+- **Three node:** ten processes must stay running — 3 Geth, 3 beacon, 3 validator, plus your verification shell.
+- Use separate PowerShell windows for each process.
+- HTTP RPC runs on ports `18545`, `18546`, `18547`.
+- Engine API uses ports `8551`, `8552`, `8553` with JWT auth.
+- Beacon gRPC uses ports `4000`, `4001`, `4002`; REST gateways use `3500`, `3501`, `3502`.
+- Each Geth node needs a unique `--ipcpath` in multi-node mode to avoid pipe conflicts.
+- The `password-clean` file must be plain ASCII with no BOM; `Out-File -Encoding ASCII -NoNewline` creates this correctly.
+- This is a local devnet. Do not use it for production.
+
+---
+
+## Troubleshooting
+
+### `geth` is not recognized
+Use `.\geth.exe` instead of `geth`, or add the `private_ethereum_setup` folder to your system PATH.
+
+### Geth exits with terminal total difficulty error
+You are using a genesis file meant for Clique. Use the provided `private_ethereum_setup\genesis.json` and regenerate `genesis-pos.json` with Prysm.
+
+### Beacon node says "node is optimistic" or `el_offline` stays true
+Ensure Geth is fully started and the Engine API connection is healthy. Check that `jwt.hex` is the same for both clients.
+
+### Validator fails with slashing protection errors
+Stop the validator, delete its slashing-protection database, and restart with `--force-clear-db` on the beacon node only when doing a fresh genesis:
+
+```powershell
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:LOCALAPPDATA\Eth2"
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "validator_wallet*"
+```
+
+### `send_tx.js` says "invalid password"
+Ensure `node1\password-clean` was created with `-Encoding ASCII -NoNewline` and that the first keystore in `node1\keystore` belongs to the funded address.
+
+### Chain does not produce blocks
+Use a future `--genesis-time` (e.g. 120–180 seconds from now) and make sure the validators are running before that time.
+
+### Geth nodes do not peer on localhost
+Fetch Node 1's enode and use `--bootnodes` on Nodes 2/3, or use `admin.addPeer` manually. NAT can advertise an external IP; replace the external IP with `127.0.0.1` in the enode string when all nodes are on the same machine.
+
+### `Fatal: Error starting protocol stack: open \.	ubeackslashgeth.ipc: Access is denied`
+You are running multiple Geth nodes without unique `--ipcpath` values. Add `--ipcpath geth1.ipc`, `--ipcpath geth2.ipc`, and `--ipcpath geth3.ipc` to each node respectively.
+
+### Want a fresh start
+Stop all processes, then delete:
+- `node1\geth`, `node2\geth`, `node3\geth`
+- `beacondata1`, `beacondata2`, `beacondata3`
+- `validator_wallet1`, `validator_wallet2`, `validator_wallet3`
+- `%LOCALAPPDATA%\Eth2`
+
+Then repeat from the genesis generation step.
+
+---
+
+## Architecture
+
+```
+        ┌──────────┐        ┌──────────┐        ┌──────────┐
+        │ Geth 1   │◄──────►│ Geth 2   │◄──────►│ Geth 3   │
+        │:18545    │  p2p   │:18546    │  p2p   │:18547    │
+        └────┬─────┘        └────┬─────┘        └────┬─────┘
+             │ Engine API        │ Engine API        │ Engine API
+             ▼                   ▼                   ▼
+        ┌──────────┐        ┌──────────┐        ┌──────────┐
+        │ Beacon 1 │◄──────►│ Beacon 2 │◄──────►│ Beacon 3 │
+        │:4000     │ libp2p │:4001     │ libp2p │:4002     │
+        └────┬─────┘        └────┬─────┘        └────┬─────┘
+             │ gRPC              │ gRPC              │ gRPC
+             ▼                   ▼                   ▼
+        ┌──────────┐        ┌──────────┐        ┌──────────┐
+        │Validator1│        │Validator2│        │Validator3│
+        └──────────┘        └──────────┘        └──────────┘
+```
+
+---
+
+## Detailed PoS Guide
+
+For the full technical explanation, see [`POSE_SETUP_GUIDE.md`](./POSE_SETUP_GUIDE.md).
+
+---
+
+## Credits
+
+Original Linux setup by LifnaJos. This Windows PoS adaptation was created to support Geth 1.17 and modern Ethereum consensus.
