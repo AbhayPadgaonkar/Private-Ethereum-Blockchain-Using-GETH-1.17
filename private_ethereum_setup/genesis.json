@@ -14,16 +14,34 @@
     "londonBlock": 0,
     "arrowGlacierBlock": 0,
     "grayGlacierBlock": 0,
-    "clique": {
-      "period": 5,
-      "epoch": 30000
+    "mergeNetsplitBlock": 0,
+    "terminalTotalDifficulty": 0,
+    "terminalTotalDifficultyPassed": true,
+    "shanghaiTime": 0,
+    "cancunTime": 0,
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": 3338477
+      },
+      "prague": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": 5007716
+      },
+      "osaka": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": 5007716
+      }
     }
   },
-  "difficulty": "1",
+  "difficulty": "0",
   "gasLimit": "800000000",
-  "extradata": "0x000000000000000000000000000000000000000000000000000000000000000098608ADf9c785d54f40cDcf6700E990771b192260000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "baseFeePerGas": "0x7",
+  "extradata": "0x",
   "alloc": {
-    "0x98608ADf9c785d54f40cDcf6700E990771b19226": { "balance": "100000000000000000000000" },
-    "0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C": { "balance": "120000000000000000000000" }
+    "0x014BFF6c76d88e815075c0323C3904Fe635c2325": { "balance": "100000000000000000000000" }
   }
 }
