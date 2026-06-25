@@ -789,9 +789,14 @@ Then repeat from the genesis generation step.
 
 ---
 
-## Expanding the Network: Adding Node 4 (and beyond)
+## Expanding the Network: Create Any Number of Nodes
 
-The instructions above set up a 3-node network. You can add more Geth + beacon + validator nodes using the same pattern. Adding a Geth node is straightforward; adding a **new validator** that participates from genesis requires regenerating `genesis.ssz` with the new validator count.
+The 3-node setup is just an example. You can create a network with **any number of nodes** by following a general pattern. The rules are:
+
+1. Each Geth node needs a unique datadir, P2P port, HTTP port, Engine API port, and IPC pipe.
+2. Each beacon node needs a unique datadir, gRPC port, REST port, P2P ports, and one `--peer` pointing to the bootstrap node.
+3. Each validator needs a unique `--interop-start-index` and its own wallet datadir.
+4. To have `V` validators active from genesis, regenerate `genesis.ssz` with `--num-validators=V`.
 
 ### Stop everything
 
@@ -800,26 +805,33 @@ Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validat
 Start-Sleep -Seconds 3
 ```
 
-### Add Node 4 Geth datadir and account
+### Choose your node count
+
+Pick a total number of nodes `N` (for example `N=5`). This creates Nodes 1 through 5.
+
+### Create a Node directory and account for each new node
+
+For every new node `i` from `1` to `N`:
 
 ```powershell
-cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
-
-New-Item -ItemType Directory -Path "node4" -Force
-"node4" | Out-File -FilePath "node4\password-clean" -Encoding ASCII -NoNewline
-
-.\geth.exe account new --datadir node4 --password node4\password-clean
+$N = 5
+for ($i = 1; $i -le $N; $i++) {
+    New-Item -ItemType Directory -Path "node$i" -Force
+    "node$i" | Out-File -FilePath "node$i\password-clean" -Encoding ASCII -NoNewline
+    .\geth.exe account new --datadir node$i --password node$i\password-clean
+}
 ```
 
-Save the printed address. If you want it funded, add it to `genesis.json` under `alloc` before regenerating.
+If you want any of these addresses funded at genesis, add them to `genesis.json` under `alloc` before the next step.
 
-### Regenerate genesis with 4 validators
+### Regenerate genesis with N validators
 
 ```powershell
+$N = 5
 $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
 
 .\prysmctl.exe testnet generate-genesis `
-  --num-validators=4 `
+  --num-validators=$N `
   --output-ssz=genesis.ssz `
   --chain-config-file=chain-config.yaml `
   --geth-genesis-json-in=genesis.json `
@@ -828,88 +840,111 @@ $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).To
   --genesis-time=$futureTime
 ```
 
-> `--num-validators=4` hardcodes 4 validators with 32 ETH each into the beacon genesis state. You cannot add a validator to a running chain this way — this only works because you are rebuilding from scratch.
+> `--num-validators=$N` hardcodes `N` validators with 32 ETH each into the beacon genesis state. You cannot add validators to a running chain this way; this only works when rebuilding from scratch.
 
-### Re-initialize all Geth datadirs
+### Initialize all Geth datadirs
 
 ```powershell
-.\geth.exe init --datadir=node1 --state.scheme hash genesis-pos.json
-.\geth.exe init --datadir=node2 --state.scheme hash genesis-pos.json
-.\geth.exe init --datadir=node3 --state.scheme hash genesis-pos.json
-.\geth.exe init --datadir=node4 --state.scheme hash genesis-pos.json
+$N = 5
+for ($i = 1; $i -le $N; $i++) {
+    .\geth.exe init --datadir=node$i --state.scheme hash genesis-pos.json
+}
 ```
 
-### Start Geth Node 4
+### Start Geth nodes
 
-Use the next free ports. In the 3-node setup the Geth P2P ports are `30306`–`30308`, HTTP ports are `18545`–`18547`, Engine API ports are `8551`–`8553`, and IPC pipes are `geth1.ipc`–`geth3.ipc`.
+For each node `i`, use the ports from the table below. Node 1 has no `--bootnodes`; Nodes 2..N use Node 1's enode.
 
 ```powershell
-.\geth.exe `
-  --datadir node4 `
-  --port 30309 `
-  --networkid 123454321 `
-  --syncmode full `
-  --state.scheme hash `
-  --http --http.port 18548 `
-  --http.api eth,net,web3,engine,admin `
-  --http.corsdomain="*" --http.vhosts="*" --http.addr 127.0.0.1 `
-  --authrpc.port 8554 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
-  --authrpc.jwtsecret jwt.hex `
-  --ipcpath geth4.ipc `
-  --bootnodes "<ENODE1>"
+$N = 5
+
+# Get Node 1 enode first after starting Node 1, then pass it to others.
+# Example for node i:
+# $p2p = 30305 + $i
+# $http = 18544 + $i
+# $auth = 8550 + $i
 ```
 
-### Start Beacon Node 4
+For Node `i`:
 
 ```powershell
-.\beacon-chain.exe `
-  --datadir beacondata4 `
-  --min-sync-peers 1 `
-  --genesis-state genesis.ssz `
-  --chain-config-file chain-config.yaml `
-  --contract-deployment-block 0 `
-  --deposit-contract 0x0000000000000000000000000000000000000000 `
-  --rpc-host 127.0.0.1 --rpc-port 4003 `
-  --grpc-gateway-host 127.0.0.1 --grpc-gateway-port 3503 `
-  --execution-endpoint http://127.0.0.1:8554 `
-  --jwt-secret jwt.hex `
-  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --minimum-peers-per-subnet 1 `
-  --disable-staking-contract-check `
-  --interop-eth1data-votes `
-  --p2p-tcp-port 13003 --p2p-udp-port 12003 `
-  --peer <BEACON1_MULTIADDR> `
-  --force-clear-db `
-  --accept-terms-of-use
+$N = 5
+$i = 1  # change to 2, 3, 4, 5
+
+$gethP2P = 30305 + $i
+$gethHttp = 18544 + $i
+$gethAuth = 8550 + $i
+$gethIpc = "geth$i.ipc"
+
+# Node 1 starts without --bootnodes. Other nodes boot from Node 1.
+$bootnodes = if ($i -eq 1) { "" } else { "--bootnodes `"$env:NODE1_ENODE`"" }
+
+$cmd = ".\geth.exe --datadir node$i --port $gethP2P --networkid 123454321 --syncmode full --state.scheme hash " +
+       "--http --http.port $gethHttp --http.api eth,net,web3,engine,admin --http.corsdomain=* --http.vhosts=* --http.addr 127.0.0.1 " +
+       "--authrpc.port $gethAuth --authrpc.addr 127.0.0.1 --authrpc.vhosts=* --authrpc.jwtsecret jwt.hex --ipcpath $gethIpc $bootnodes"
+
+Invoke-Expression $cmd
 ```
 
-### Start Validator 4
+### Start Beacon nodes
+
+For Node `i`:
 
 ```powershell
+$N = 5
+$i = 1  # change for each node
+
+$beaconGrpc = 3999 + $i
+$beaconRest = 3499 + $i
+$beaconTcp = 12999 + $i
+$beaconUdp = 11999 + $i
+$gethAuth = 8550 + $i
+$minSyncPeers = if ($i -eq 1) { 0 } else { 1 }
+$peerFlag = if ($i -eq 1) { "" } else { "--peer `"$env:BEACON1_MULTIADDR`"" }
+
+$cmd = ".\beacon-chain.exe --datadir beacondata$i --min-sync-peers $minSyncPeers --genesis-state genesis.ssz " +
+       "--chain-config-file chain-config.yaml --contract-deployment-block 0 --deposit-contract 0x0000000000000000000000000000000000000000 " +
+       "--rpc-host 127.0.0.1 --rpc-port $beaconGrpc --grpc-gateway-host 127.0.0.1 --grpc-gateway-port $beaconRest " +
+       "--execution-endpoint http://127.0.0.1:$gethAuth --jwt-secret jwt.hex --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 " +
+       "--minimum-peers-per-subnet 1 --disable-staking-contract-check --interop-eth1data-votes " +
+       "--p2p-tcp-port $beaconTcp --p2p-udp-port $beaconUdp $peerFlag --force-clear-db --accept-terms-of-use"
+
+Invoke-Expression $cmd
+```
+
+### Start Validators
+
+For Node `i`:
+
+```powershell
+$N = 5
+$i = 1  # change for each node
+
+$beaconGrpc = 3999 + $i
+$validatorIndex = $i - 1
+
 .\validator.exe `
-  --datadir validator_wallet4 --wallet-dir validator_wallet4 `
+  --datadir validator_wallet$i --wallet-dir validator_wallet$i `
   --chain-config-file chain-config.yaml `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --beacon-rpc-provider 127.0.0.1:4003 `
-  --interop-num-validators 1 --interop-start-index 3 `
+  --beacon-rpc-provider 127.0.0.1:$beaconGrpc `
+  --interop-num-validators 1 --interop-start-index $validatorIndex `
   --accept-terms-of-use
 ```
 
-> `--interop-start-index 3` because validator indices are 0-based. Node 4 is validator index 3.
+### Port reference for Node i
 
-### Port pattern for Node N
-
-| Component | Node 1 | Node 2 | Node 3 | Node 4 | Node N |
-|-----------|--------|--------|--------|--------|--------|
-| Geth P2P | 30306 | 30307 | 30308 | 30309 | 30305 + N |
-| Geth HTTP | 18545 | 18546 | 18547 | 18548 | 18544 + N |
-| Engine API | 8551 | 8552 | 8553 | 8554 | 8550 + N |
-| Geth IPC | geth1.ipc | geth2.ipc | geth3.ipc | geth4.ipc | gethN.ipc |
-| Beacon gRPC | 4000 | 4001 | 4002 | 4003 | 3999 + N |
-| Beacon REST | 3500 | 3501 | 3502 | 3503 | 3499 + N |
-| Beacon P2P TCP | 13000 | 13001 | 13002 | 13003 | 12999 + N |
-| Beacon P2P UDP | 12000 | 12001 | 12002 | 12003 | 11999 + N |
-| Validator index | 0 | 1 | 2 | 3 | N - 1 |
+| Component | Formula for Node `i` | Example Node 4 |
+|-----------|----------------------|----------------|
+| Geth P2P port | `30305 + i` | `30309` |
+| Geth HTTP port | `18544 + i` | `18548` |
+| Engine API port | `8550 + i` | `8554` |
+| Geth IPC pipe | `geth{i}.ipc` | `geth4.ipc` |
+| Beacon gRPC port | `3999 + i` | `4003` |
+| Beacon REST port | `3499 + i` | `3503` |
+| Beacon P2P TCP | `12999 + i` | `13003` |
+| Beacon P2P UDP | `11999 + i` | `12003` |
+| Validator start index | `i - 1` | `3` |
 
 ### Important rules
 
