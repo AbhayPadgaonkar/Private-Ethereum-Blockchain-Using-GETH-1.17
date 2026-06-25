@@ -96,7 +96,9 @@ The repo already contains the required files in `private_ethereum_setup`:
 - `chain-config.yaml` — Prysm chain config
 - `jwt.hex` — JWT secret for Geth-Prysm auth
 
-Create a password file and a new keystore account. This account will receive the genesis funds and is used by `send_tx.js`.
+The genesis already funds address `0x014BFF6c76d88e815075c0323C3904Fe635c2325`, and the `node1\keystore` already contains the matching keystore. The transaction scripts are configured to use this account, so you can skip the rest of this section on first run.
+
+If you want to use your own funded account instead, create a password file and a new keystore account, then edit `genesis.json` to fund the printed address.
 
 ```powershell
 "node1" | Out-File -FilePath "node1\password-clean" -Encoding ASCII -NoNewline
@@ -373,11 +375,14 @@ while ($true) {
 }
 ```
 
-Once the block number is `0x20` or higher, capture Beacon Node 1's peer ID:
+Once the block number is `0x20` or higher, capture Beacon Node 1's identity:
 
 ```powershell
-$b1id = (Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/identity' -TimeoutSec 10).data.peer_id
+$id = Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/identity' -TimeoutSec 10
+$b1id = $id.data.peer_id
+$b1addr = $id.data.p2p_addresses | Where-Object { $_ -like "*/tcp/13000/p2p/*" } | Select-Object -First 1
 Write-Host "Beacon1 peer id: $b1id"
+Write-Host "Beacon1 tcp multiaddr: $b1addr"
 ```
 
 If the identity endpoint fails, read it from the log:
@@ -386,11 +391,16 @@ If the identity endpoint fails, read it from the log:
 Select-String -Path "beacondata1\*.log" -Pattern "Running node with peer id of" | Select-Object -Last 1
 ```
 
+> **Note:** Prysm may advertise its external/interface IP (`172.31.x.x` or similar) instead of `127.0.0.1`. Use the exact `p2p_addresses` value printed above in the `--peer` flags for Nodes 2 and 3. If it shows `127.0.0.1`, use that; otherwise use the interface IP.
+
 ### Start Nodes 2 and 3 after Node 1 has history
 
 Now start Geth Nodes 2 and 3 (they will sync execution blocks from Node 1), then their beacon nodes (they will sync consensus blocks from Beacon Node 1).
 
-PowerShell window 6 — Beacon Node 2 (replace `<BEACON1_PEER_ID>`):
+>
+> **Important:** Replace `<BEACON1_MULTIADDR>` with the full multiaddr printed by the identity command (e.g. `/ip4/127.0.0.1/tcp/13000/p2p/16Uiu2...` or `/ip4/172.31.176.1/tcp/13000/p2p/16Uiu2...`). Do not use a different peer ID than the one Node 1 reports.
+
+PowerShell window 6 — Beacon Node 2 (replace `<BEACON1_MULTIADDR>`):
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
@@ -411,7 +421,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --disable-staking-contract-check `
   --interop-eth1data-votes `
   --p2p-tcp-port 13001 --p2p-udp-port 12001 `
-  --peer /ip4/127.0.0.1/tcp/13000/p2p/<BEACON1_PEER_ID> `
+  --peer <BEACON1_MULTIADDR> `
   --force-clear-db `
   --accept-terms-of-use
 ```
@@ -437,7 +447,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --disable-staking-contract-check `
   --interop-eth1data-votes `
   --p2p-tcp-port 13002 --p2p-udp-port 12002 `
-  --peer /ip4/127.0.0.1/tcp/13000/p2p/<BEACON1_PEER_ID> `
+  --peer <BEACON1_MULTIADDR> `
   --force-clear-db `
   --accept-terms-of-use
 ```
@@ -485,48 +495,6 @@ You should see:
 
 After a few seconds the `sync_distance` drops to `0` and `is_syncing` becomes `false`. This proves the beacon nodes are genuinely downloading and verifying consensus history from Node 1, just like a real Ethereum node catching up to the network.
 
----
-
-```powershell
-cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
-
-.\validator.exe `
-  --datadir validator_wallet1 --wallet-dir validator_wallet1 `
-  --chain-config-file chain-config.yaml `
-  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --beacon-rpc-provider 127.0.0.1:4000 `
-  --interop-num-validators 1 --interop-start-index 0 `
-  --accept-terms-of-use
-```
-
-PowerShell window 9:
-
-```powershell
-cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
-
-.\validator.exe `
-  --datadir validator_wallet2 --wallet-dir validator_wallet2 `
-  --chain-config-file chain-config.yaml `
-  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --beacon-rpc-provider 127.0.0.1:4001 `
-  --interop-num-validators 1 --interop-start-index 1 `
-  --accept-terms-of-use
-```
-
-PowerShell window 10:
-
-```powershell
-cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
-
-.\validator.exe `
-  --datadir validator_wallet3 --wallet-dir validator_wallet3 `
-  --chain-config-file chain-config.yaml `
-  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --beacon-rpc-provider 127.0.0.1:4002 `
-  --interop-num-validators 1 --interop-start-index 2 `
-  --accept-terms-of-use
-```
-
 > **Why stagger the startup?** In a real network, nodes join after the chain has already produced many blocks. They must download history and catch up. Starting Node 1 first, then Nodes 2 and 3, reproduces this behavior so you can observe `is_syncing: true` dropping to `false`.
 
 ---
@@ -549,6 +517,14 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/syncing'
 Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/syncing'
 ```
 
+Check beacon peering:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/peers' | Select-Object -ExpandProperty data
+Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/peers' | Select-Object -ExpandProperty data
+Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/peers' | Select-Object -ExpandProperty data
+```
+
 Check execution peering:
 
 ```powershell
@@ -556,6 +532,34 @@ Check execution peering:
 .\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18546
 .\geth.exe attach --exec "admin.peers.length" http://127.0.0.1:18547
 ```
+
+---
+
+## Check Which Validator Proposed a Block
+
+In PoS, validators take turns proposing blocks. Validator index `0` belongs to Node 1, `1` to Node 2, and `2` to Node 3.
+
+Get the proposer of the latest beacon block:
+
+```powershell
+(Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v2/beacon/blocks/head').data.message.proposer_index
+```
+
+List proposers for the last 12 slots:
+
+```powershell
+$head = [int](Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/beacon/headers/head').data.header.message.slot
+for ($s = [math]::Max(0, $head - 11); $s -le $head; $s++) {
+  try {
+    $b = Invoke-RestMethod -Uri "http://127.0.0.1:3500/eth/v2/beacon/blocks/$s"
+    [pscustomobject]@{Slot=$s; Proposer=$b.data.message.proposer_index}
+  } catch {
+    [pscustomobject]@{Slot=$s; Proposer="missed"}
+  }
+}
+```
+
+This shows the network is rotating block production across the three validators.
 
 ---
 
@@ -700,11 +704,14 @@ This demonstrates that ETH moves from one address to another on the shared ledge
 
 ## Network Keypair Reference
 
-| Node | Public Address | Notes |
-|------|----------------|-------|
-| Funded sender | the address printed by `account new` | Created earlier, funded in `private_ethereum_setup\genesis.json`, used by `send_tx.js` |
-| Recipient | the address you send to in `send_tx.js` | Receives test transfers |
+| Item | Value / Index | Notes |
+|------|---------------|-------|
+| Funded sender | `0x014BFF6c76d88e815075c0323C3904Fe635c2325` | Pre-funded in `private_ethereum_setup\genesis.json`, used by `send_tx.js` and `send_tx_node1_to_node2.js` |
+| Node 2 recipient | first keystore in `node2\keystore` | Created with `geth account new --datadir node2`, receives transfers in demos |
 | Fee recipient | `0x98608ADf9c785d54f40cDcf6700E990771b19226` | Used by Prysm validator for block rewards |
+| Validator 1 | index `0` | Connected to Beacon Node 1 (`127.0.0.1:4000`) |
+| Validator 2 | index `1` | Connected to Beacon Node 2 (`127.0.0.1:4001`) |
+| Validator 3 | index `2` | Connected to Beacon Node 3 (`127.0.0.1:4002`) |
 
 ---
 
@@ -731,6 +738,25 @@ You are using a genesis file meant for Clique. Use the provided `private_ethereu
 
 ### Beacon node says "node is optimistic" or `el_offline` stays true
 Ensure Geth is fully started and the Engine API connection is healthy. Check that `jwt.hex` is the same for both clients.
+
+### `sync_distance` is greater than 0 but `is_syncing` is false
+This means the beacon node sees a higher head but has **no peer** to download from. Verify peering:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/peers' | Select-Object -ExpandProperty data
+```
+
+If the list is empty:
+1. Check Node 1's identity and copy the exact `p2p_addresses` value:
+   ```powershell
+   Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/identity' | Select-Object -ExpandProperty data
+   ```
+2. Make sure the `--peer` flag on Nodes 2/3 uses that exact peer ID and IP.
+3. Verify Node 1 is listening on the IP shown by the identity endpoint (it may be `172.31.x.x` instead of `127.0.0.1`).
+4. Check Windows Firewall allows Prysm on ports `13000`–`13002` (TCP) and `12000`–`12002` (UDP).
+
+### Beacon nodes peer but head slots diverge slightly
+This is normal when the network is producing blocks quickly. Small gaps of 1–3 slots with `sync_distance > 0` and `is_syncing: false` usually resolve within seconds. To see `is_syncing: true`, do a staggered start: stop Nodes 2/3, let Node 1 produce 30+ slots, then restart Nodes 2/3.
 
 ### Validator fails with slashing protection errors
 Stop the validator, delete its slashing-protection database, and restart with `--force-clear-db` on the beacon node only when doing a fresh genesis:
