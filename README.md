@@ -319,9 +319,13 @@ $enode3 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:1854
 
 ---
 
-## Start the Three Beacon Nodes
+## Realistic Sync: Start Node 1 First, Then Nodes 2 and 3
 
-First start Beacon 1 and capture its peer ID. PowerShell window 5:
+To demonstrate real beacon-chain syncing, start Node 1 first and let it build some chain history. Then start Nodes 2 and 3 so they actually download and verify blocks from Node 1.
+
+### Start Node 1 beacon and validator
+
+PowerShell window 5 — Beacon Node 1:
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
@@ -345,10 +349,33 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --accept-terms-of-use
 ```
 
-Wait for it to log its peer ID (look for `Running node with peer id of 16Uiu2HAm...`). Then fetch it:
+PowerShell window 8 — Validator 1:
 
 ```powershell
-# Wait ~10 seconds after startup, then run:
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet1 --wallet-dir validator_wallet1 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4000 `
+  --interop-num-validators 1 --interop-start-index 0 `
+  --accept-terms-of-use
+```
+
+Wait until Node 1 has produced at least 20–30 blocks. You can watch it with:
+
+```powershell
+while ($true) {
+    $r = Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+    Write-Host "Node 1 block: $($r.result)"
+    Start-Sleep -Seconds 5
+}
+```
+
+Once the block number is `0x20` or higher, capture Beacon Node 1's peer ID:
+
+```powershell
 $b1id = (Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/identity' -TimeoutSec 10).data.peer_id
 Write-Host "Beacon1 peer id: $b1id"
 ```
@@ -359,14 +386,18 @@ If the identity endpoint fails, read it from the log:
 Select-String -Path "beacondata1\*.log" -Pattern "Running node with peer id of" | Select-Object -Last 1
 ```
 
-PowerShell window 6 (replace `<BEACON1_PEER_ID>`):
+### Start Nodes 2 and 3 after Node 1 has history
+
+Now start Geth Nodes 2 and 3 (they will sync execution blocks from Node 1), then their beacon nodes (they will sync consensus blocks from Beacon Node 1).
+
+PowerShell window 6 — Beacon Node 2 (replace `<BEACON1_PEER_ID>`):
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 
 .\beacon-chain.exe `
   --datadir beacondata2 `
-  --min-sync-peers 0 `
+  --min-sync-peers 1 `
   --genesis-state genesis.ssz `
   --chain-config-file chain-config.yaml `
   --contract-deployment-block 0 `
@@ -376,7 +407,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --execution-endpoint http://127.0.0.1:8552 `
   --jwt-secret jwt.hex `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --minimum-peers-per-subnet 0 `
+  --minimum-peers-per-subnet 1 `
   --disable-staking-contract-check `
   --interop-eth1data-votes `
   --p2p-tcp-port 13001 --p2p-udp-port 12001 `
@@ -385,14 +416,14 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --accept-terms-of-use
 ```
 
-PowerShell window 7:
+PowerShell window 7 — Beacon Node 3:
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 
 .\beacon-chain.exe `
   --datadir beacondata3 `
-  --min-sync-peers 0 `
+  --min-sync-peers 1 `
   --genesis-state genesis.ssz `
   --chain-config-file chain-config.yaml `
   --contract-deployment-block 0 `
@@ -402,7 +433,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --execution-endpoint http://127.0.0.1:8553 `
   --jwt-secret jwt.hex `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
-  --minimum-peers-per-subnet 0 `
+  --minimum-peers-per-subnet 1 `
   --disable-staking-contract-check `
   --interop-eth1data-votes `
   --p2p-tcp-port 13002 --p2p-udp-port 12002 `
@@ -411,11 +442,50 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --accept-terms-of-use
 ```
 
+PowerShell window 9 — Validator 2:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet2 --wallet-dir validator_wallet2 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4001 `
+  --interop-num-validators 1 --interop-start-index 1 `
+  --accept-terms-of-use
+```
+
+PowerShell window 10 — Validator 3:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet3 --wallet-dir validator_wallet3 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4002 `
+  --interop-num-validators 1 --interop-start-index 2 `
+  --accept-terms-of-use
+```
+
+### Watch the realistic sync
+
+Check Beacon Node 2 and 3 sync status right after startup:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/syncing'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/syncing'
+```
+
+You should see:
+- `is_syncing: true`
+- `sync_distance` showing how many slots behind Node 1 they are
+
+After a few seconds the `sync_distance` drops to `0` and `is_syncing` becomes `false`. This proves the beacon nodes are genuinely downloading and verifying consensus history from Node 1, just like a real Ethereum node catching up to the network.
+
 ---
-
-## Start the Three Validators
-
-PowerShell window 8:
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
@@ -456,6 +526,8 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --interop-num-validators 1 --interop-start-index 2 `
   --accept-terms-of-use
 ```
+
+> **Why stagger the startup?** In a real network, nodes join after the chain has already produced many blocks. They must download history and catch up. Starting Node 1 first, then Nodes 2 and 3, reproduces this behavior so you can observe `is_syncing: true` dropping to `false`.
 
 ---
 
