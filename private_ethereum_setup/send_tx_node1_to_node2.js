@@ -9,6 +9,7 @@ const RECIPIENT_KEYSTORE_DIR = path.join(__dirname, 'node2', 'keystore');
 const RECIPIENT_PASSWORD_FILE = path.join(__dirname, 'node2', 'password-clean');
 const RPC_URL_NODE1 = 'http://127.0.0.1:18545';
 const BEACON_REST = 'http://127.0.0.1:3500';
+const SENDER_ADDRESS = '0x014BFF6c76d88e815075c0323C3904Fe635c2325';
 
 function beaconGet(endpoint) {
   return new Promise((resolve, reject) => {
@@ -26,12 +27,17 @@ function beaconGet(endpoint) {
   });
 }
 
-async function loadWallet(keystoreDir, passwordFile) {
+async function loadWallet(keystoreDir, passwordFile, targetAddress) {
   const files = fs.readdirSync(keystoreDir).filter(f => f.startsWith('UTC--'));
   if (files.length === 0) {
     throw new Error('No keystore file found in ' + keystoreDir);
   }
-  const keystorePath = path.join(keystoreDir, files[0]);
+  let keystoreFile = files[0];
+  if (targetAddress) {
+    const found = files.find(f => f.toLowerCase().includes(targetAddress.toLowerCase().replace('0x', '')));
+    if (found) keystoreFile = found;
+  }
+  const keystorePath = path.join(keystoreDir, keystoreFile);
   const keystoreJson = fs.readFileSync(keystorePath, 'utf8');
   const password = fs.readFileSync(passwordFile, 'utf8').trim();
   return ethers.Wallet.fromEncryptedJson(keystoreJson, password);
@@ -45,7 +51,7 @@ async function getBalance(provider, address, label) {
 
 async function main() {
   console.log('Loading Node 1 sender wallet...');
-  const senderWallet = await loadWallet(SENDER_KEYSTORE_DIR, SENDER_PASSWORD_FILE);
+  const senderWallet = await loadWallet(SENDER_KEYSTORE_DIR, SENDER_PASSWORD_FILE, SENDER_ADDRESS);
   console.log('Sender address (Node 1):', senderWallet.address);
 
   console.log('\nLoading Node 2 recipient wallet...');
