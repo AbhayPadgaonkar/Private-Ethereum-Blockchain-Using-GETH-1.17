@@ -789,6 +789,136 @@ Then repeat from the genesis generation step.
 
 ---
 
+## Expanding the Network: Adding Node 4 (and beyond)
+
+The instructions above set up a 3-node network. You can add more Geth + beacon + validator nodes using the same pattern. Adding a Geth node is straightforward; adding a **new validator** that participates from genesis requires regenerating `genesis.ssz` with the new validator count.
+
+### Stop everything
+
+```powershell
+Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator') } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+```
+
+### Add Node 4 Geth datadir and account
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+New-Item -ItemType Directory -Path "node4" -Force
+"node4" | Out-File -FilePath "node4\password-clean" -Encoding ASCII -NoNewline
+
+.\geth.exe account new --datadir node4 --password node4\password-clean
+```
+
+Save the printed address. If you want it funded, add it to `genesis.json` under `alloc` before regenerating.
+
+### Regenerate genesis with 4 validators
+
+```powershell
+$futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+
+.\prysmctl.exe testnet generate-genesis `
+  --num-validators=4 `
+  --output-ssz=genesis.ssz `
+  --chain-config-file=chain-config.yaml `
+  --geth-genesis-json-in=genesis.json `
+  --geth-genesis-json-out=genesis-pos.json `
+  --fork=deneb `
+  --genesis-time=$futureTime
+```
+
+> `--num-validators=4` hardcodes 4 validators with 32 ETH each into the beacon genesis state. You cannot add a validator to a running chain this way — this only works because you are rebuilding from scratch.
+
+### Re-initialize all Geth datadirs
+
+```powershell
+.\geth.exe init --datadir=node1 --state.scheme hash genesis-pos.json
+.\geth.exe init --datadir=node2 --state.scheme hash genesis-pos.json
+.\geth.exe init --datadir=node3 --state.scheme hash genesis-pos.json
+.\geth.exe init --datadir=node4 --state.scheme hash genesis-pos.json
+```
+
+### Start Geth Node 4
+
+Use the next free ports. In the 3-node setup the Geth P2P ports are `30306`–`30308`, HTTP ports are `18545`–`18547`, Engine API ports are `8551`–`8553`, and IPC pipes are `geth1.ipc`–`geth3.ipc`.
+
+```powershell
+.\geth.exe `
+  --datadir node4 `
+  --port 30309 `
+  --networkid 123454321 `
+  --syncmode full `
+  --state.scheme hash `
+  --http --http.port 18548 `
+  --http.api eth,net,web3,engine,admin `
+  --http.corsdomain="*" --http.vhosts="*" --http.addr 127.0.0.1 `
+  --authrpc.port 8554 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
+  --authrpc.jwtsecret jwt.hex `
+  --ipcpath geth4.ipc `
+  --bootnodes "<ENODE1>"
+```
+
+### Start Beacon Node 4
+
+```powershell
+.\beacon-chain.exe `
+  --datadir beacondata4 `
+  --min-sync-peers 1 `
+  --genesis-state genesis.ssz `
+  --chain-config-file chain-config.yaml `
+  --contract-deployment-block 0 `
+  --deposit-contract 0x0000000000000000000000000000000000000000 `
+  --rpc-host 127.0.0.1 --rpc-port 4003 `
+  --grpc-gateway-host 127.0.0.1 --grpc-gateway-port 3503 `
+  --execution-endpoint http://127.0.0.1:8554 `
+  --jwt-secret jwt.hex `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --minimum-peers-per-subnet 1 `
+  --disable-staking-contract-check `
+  --interop-eth1data-votes `
+  --p2p-tcp-port 13003 --p2p-udp-port 12003 `
+  --peer <BEACON1_MULTIADDR> `
+  --force-clear-db `
+  --accept-terms-of-use
+```
+
+### Start Validator 4
+
+```powershell
+.\validator.exe `
+  --datadir validator_wallet4 --wallet-dir validator_wallet4 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4003 `
+  --interop-num-validators 1 --interop-start-index 3 `
+  --accept-terms-of-use
+```
+
+> `--interop-start-index 3` because validator indices are 0-based. Node 4 is validator index 3.
+
+### Port pattern for Node N
+
+| Component | Node 1 | Node 2 | Node 3 | Node 4 | Node N |
+|-----------|--------|--------|--------|--------|--------|
+| Geth P2P | 30306 | 30307 | 30308 | 30309 | 30305 + N |
+| Geth HTTP | 18545 | 18546 | 18547 | 18548 | 18544 + N |
+| Engine API | 8551 | 8552 | 8553 | 8554 | 8550 + N |
+| Geth IPC | geth1.ipc | geth2.ipc | geth3.ipc | geth4.ipc | gethN.ipc |
+| Beacon gRPC | 4000 | 4001 | 4002 | 4003 | 3999 + N |
+| Beacon REST | 3500 | 3501 | 3502 | 3503 | 3499 + N |
+| Beacon P2P TCP | 13000 | 13001 | 13002 | 13003 | 12999 + N |
+| Beacon P2P UDP | 12000 | 12001 | 12002 | 12003 | 11999 + N |
+| Validator index | 0 | 1 | 2 | 3 | N - 1 |
+
+### Important rules
+
+- A new **Geth node** can join anytime with `--bootnodes` or `admin.addPeer`.
+- A new **beacon node** can sync from existing peers with `--peer` and `--min-sync-peers 1`.
+- A new **validator** can only be added from genesis (as shown here) or through a real deposit contract and activation queue. This devnet has no real deposit contract, so genesis regeneration is the only option.
+
+---
+
 ## Architecture
 
 ```
