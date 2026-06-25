@@ -8,6 +8,34 @@ This README covers a **three-node devnet** — three Geth execution nodes, three
 
 ---
 
+## What the Components Do
+
+### Geth (execution client)
+- Stores the Ethereum state: accounts, balances, smart contracts
+- Validates and executes transactions
+- Builds execution blocks when instructed by the beacon node
+- Peers with other Geth nodes to share transactions and blocks
+
+### Beacon node (consensus client)
+- Tracks PoS time: slots, epochs, validator duties
+- Decides which validator proposes the next block
+- Tells Geth which block to build on via the Engine API
+- Gossips blocks and attestations with other beacon nodes
+- Finalizes blocks so they cannot be reverted
+
+### Validator
+- Holds the validator private keys
+- Signs block proposals and attestations when selected by the protocol
+- Submits signed messages to its beacon node
+- Earns rewards for correct participation, can be slashed for misbehavior
+
+In short:
+- **Geth** = the ledger and transaction executor
+- **Beacon node** = the PoS coordinator
+- **Validator** = the signer that participates in consensus
+
+---
+
 ## Requirements
 
 - Windows 10 / 11
@@ -523,6 +551,78 @@ All three should return the same non-zero balance, proving the transaction propa
 - **Beacon state root / block root**: cryptographic anchors of the consensus state
 
 Because the execution block has zero difficulty and zero nonce, yet the chain advances and includes transactions, the network is clearly running Proof-of-Stake (Gasper) consensus, not Proof-of-Work.
+
+---
+
+## Send a Transaction from Node 1 Wallet to Node 2 Wallet
+
+This demo sends ETH from the funded wallet in `node1/keystore` to a separate wallet stored in `node2/keystore`. The transaction is submitted through Node 1's RPC, but the balance change is visible on all nodes because they share the same blockchain state.
+
+### Create a recipient wallet in Node 2
+
+If `node2/keystore` is empty, create a wallet:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+"node2" | Out-File -FilePath "node2\password-clean" -Encoding ASCII -NoNewline
+
+.\geth.exe account new --datadir node2 --password node2\password-clean
+```
+
+Save the printed address.
+
+### Run the Node 1 to Node 2 transaction script
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+node send_tx_node1_to_node2.js
+```
+
+Expected output:
+
+```text
+Loading Node 1 sender wallet...
+Sender address (Node 1): 0x...
+
+Loading Node 2 recipient wallet...
+Recipient address (Node 2): 0x...
+
+--- Balances before transaction ---
+Node 1 sender balance: 100000.0 ETH
+Node 2 recipient balance: 0.0 ETH
+
+--- PoS consensus check before sending ---
+Beacon client: Prysm/v7.1.0 (windows amd64)
+Beacon syncing: false | optimistic: false
+Current fork: 0x20000093 | epoch: 0
+Execution block: 20 | difficulty: 0 | nonce: 0x0000000000000000 | miner: 0x...
+
+Sending 10 ETH from Node 1 wallet to Node 2 wallet via Node 1 RPC...
+Transaction hash: 0x...
+Mined in execution block: 21
+Gas used: 21000
+
+--- PoS consensus details for the mined block ---
+Execution block hash: 0x...
+Execution difficulty: 0 | nonce: 0x0000000000000000 | miner: 0x...
+Beacon slot: 21 | epoch: 0
+Beacon proposer index: 0
+Beacon block root: 0x...
+
+--- Balances after transaction ---
+Node 1 sender balance: 99989.999968499999706 ETH
+Node 2 recipient balance: 10.0 ETH
+
+--- Cross-node verification ---
+Node on port 18545 -> sender: 99989.999968499999706 ETH, recipient: 10.0 ETH
+Node on port 18546 -> sender: 99989.999968499999706 ETH, recipient: 10.0 ETH
+Node on port 18547 -> sender: 99989.999968499999706 ETH, recipient: 10.0 ETH
+
+Note: The transaction was submitted through Node 1 RPC, but the balance change is visible on all nodes because they share the same blockchain state.
+```
+
+This demonstrates that ETH moves from one address to another on the shared ledger, regardless of which Geth node receives the signed transaction first.
 
 ---
 
