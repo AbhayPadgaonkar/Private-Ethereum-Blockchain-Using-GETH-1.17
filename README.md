@@ -224,10 +224,17 @@ This creates:
 
 #### Step 3 — Create password files
 
+Use the **same keystore password you just typed in the deposit CLI** (not a placeholder). The wallet password can be anything you choose; Prysm uses it to encrypt the validator wallet.
+
 ```powershell
-"YOUR_KEYSTORE_PASSWORD" | Out-File -FilePath "wallet_setup\account_password.txt" -Encoding ASCII -NoNewline
-"YOUR_WALLET_PASSWORD"   | Out-File -FilePath "wallet_setup\wallet_password.txt" -Encoding ASCII -NoNewline
+# Replace the value inside the quotes with the actual keystore password from Step 2
+"my_keystore_password" | Out-File -FilePath "wallet_setup\account_password.txt" -Encoding ASCII -NoNewline
+
+# Replace the value inside the quotes with a wallet password of your choice
+"my_wallet_password"   | Out-File -FilePath "wallet_setup\wallet_password.txt" -Encoding ASCII -NoNewline
 ```
+
+> **Important:** These files contain secrets. They are listed in `.gitignore` and must never be committed to Git.
 
 #### Step 4 — Import keystores into 3 separate Prysm wallets
 
