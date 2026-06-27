@@ -198,10 +198,12 @@ You should now have a folder like `staking_deposit-cli-948d3fc-windows-amd64` co
 
 #### Step 2 — Generate keys with a new mnemonic
 
-Run the interactive CLI. It will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
+Create the output directory first, then run the interactive CLI. It will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
 
 .\staking_deposit-cli-948d3fc-windows-amd64\deposit.exe new-mnemonic `
   --num_validators 3 `
@@ -283,6 +285,7 @@ python setup.py install
 
 # Then run interactively in PowerShell
 cd ..
+New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
 python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
   --num_validators 3 `
   --chain mainnet `
