@@ -198,41 +198,11 @@ You should now have a folder like `staking_deposit-cli-948d3fc-windows-amd64` co
 
 > **Important:** The released Windows `deposit.exe` has known issues with interactive password prompts in PowerShell. If the interactive command in Step 2 crashes with a `UnicodeEncodeError`, use the Python source method shown in Step 2b instead.
 
-#### Step 2a — Generate keys with the Windows binary (interactive)
+#### Step 2 — Generate keys from Python source in PowerShell
 
-Create the output directory first, then run the interactive CLI. It will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
+The released Windows `deposit.exe` binary has two problems in PowerShell: it crashes on interactive password prompts, and it does not support the `--devnet_chain_setting` flag needed for our local devnet. So we run the Python source directly (no WSL needed).
 
-```powershell
-cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
-
-New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
-
-.\staking_deposit-cli-948d3fc-windows-amd64\deposit.exe new-mnemonic `
-  --num_validators 3 `
-  --devnet_chain_setting '{"network_name": "localdev", "genesis_fork_version": "20000089", "genesis_validator_root": "0000000000000000000000000000000000000000000000000000000000000000"}' `
-  --folder wallet_setup\validator_keys
-```
-
-This creates:
-- `wallet_setup\validator_keys\deposit_data-*.json` (rename this to `deposit_data.json`)
-- `wallet_setup\validator_keys\keystore-m_12381_3600_*.json`
-
-> **Why not `--chain mainnet`?** The deposit CLI's `--chain` flag signs deposits for mainnet's `fork_version` (`0x00000000`). Our devnet uses `GENESIS_FORK_VERSION: 0x20000089` from `chain-config.yaml`. Using `--devnet_chain_setting` ensures the deposit signatures are valid for the local devnet.
-
-> The staking CLI creates an extra nested `validator_keys` folder (`wallet_setup\validator_keys\validator_keys`). Move the files up and delete the duplicate folder before continuing:
-> ```powershell
-> Move-Item -Path "wallet_setup\validator_keys\validator_keys\*" -Destination "wallet_setup\validator_keys\" -Force
-> Remove-Item -Recurse -Force "wallet_setup\validator_keys\validator_keys"
-> ```
-
-> The deposit data filename has a timestamp suffix. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
-> ```powershell
-> Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "deposit_data-*.json" | Rename-Item -NewName "deposit_data.json" -Force
-> ```
-
-#### Step 2b — Generate keys from Python source (if `deposit.exe` crashes)
-
-If the Windows binary crashes on the password prompt, use the Python source directly in PowerShell (no WSL needed).
+First, install the source:
 
 ```powershell
 # Requires Python 3.12+ and pip
@@ -244,9 +214,10 @@ Expand-Archive -Path "staking-deposit-cli-src.zip" -DestinationPath "." -Force
 cd staking-deposit-cli-2.8.0
 pip install -r requirements.txt
 python setup.py install
+cd ..
 ```
 
-Then generate the keys interactively:
+Then generate the keys. This is interactive: it will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
@@ -257,6 +228,25 @@ python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
   --num_validators 3 `
   --devnet_chain_setting '{"network_name": "localdev", "genesis_fork_version": "20000089", "genesis_validator_root": "0000000000000000000000000000000000000000000000000000000000000000"}' `
   --folder wallet_setup\validator_keys
+```
+
+This creates:
+- `wallet_setup\validator_keys\validator_keys\deposit_data-*.json` (nested folder — move it up)
+- `wallet_setup\validator_keys\validator_keys\keystore-m_12381_3600_*.json`
+
+> **Why not `--chain mainnet`?** The deposit CLI's `--chain` flag signs deposits for mainnet's `fork_version` (`0x00000000`). Our devnet uses `GENESIS_FORK_VERSION: 0x20000089` from `chain-config.yaml`. Using `--devnet_chain_setting` ensures the deposit signatures are valid for the local devnet.
+
+Move the files out of the nested folder:
+
+```powershell
+Move-Item -Path "wallet_setup\validator_keys\validator_keys\*" -Destination "wallet_setup\validator_keys\" -Force
+Remove-Item -Recurse -Force "wallet_setup\validator_keys\validator_keys"
+```
+
+Rename the deposit data file:
+
+```powershell
+Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "deposit_data-*.json" | Rename-Item -NewName "deposit_data.json" -Force
 ```
 
 Move the files out of the nested folder:
