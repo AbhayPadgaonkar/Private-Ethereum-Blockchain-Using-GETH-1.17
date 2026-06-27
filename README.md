@@ -209,7 +209,7 @@ New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
 
 .\staking_deposit-cli-948d3fc-windows-amd64\deposit.exe new-mnemonic `
   --num_validators 3 `
-  --chain mainnet `
+  --devnet_chain_setting '{"network_name": "localdev", "genesis_fork_version": "20000089", "genesis_validator_root": "0000000000000000000000000000000000000000000000000000000000000000"}' `
   --folder wallet_setup\validator_keys
 ```
 
@@ -217,7 +217,7 @@ This creates:
 - `wallet_setup\validator_keys\deposit_data-*.json` (rename this to `deposit_data.json`)
 - `wallet_setup\validator_keys\keystore-m_12381_3600_*.json`
 
-> **Why `--chain mainnet` for a private devnet?** The deposit CLI's `--chain` flag only selects the BLS signing domain. It does **not** connect you to real Ethereum or make these validators active on mainnet. Prysm reads the actual network rules from `chain-config.yaml` (`CONFIG_NAME: localdev`, `chainId: 12345`, etc.), so the deposits are valid only for your local devnet.
+> **Why not `--chain mainnet`?** The deposit CLI's `--chain` flag signs deposits for mainnet's `fork_version` (`0x00000000`). Our devnet uses `GENESIS_FORK_VERSION: 0x20000089` from `chain-config.yaml`. Using `--devnet_chain_setting` ensures the deposit signatures are valid for the local devnet.
 
 > The staking CLI creates an extra nested `validator_keys` folder (`wallet_setup\validator_keys\validator_keys`). Move the files up and delete the duplicate folder before continuing:
 > ```powershell
@@ -255,7 +255,7 @@ New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
 
 python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
   --num_validators 3 `
-  --chain mainnet `
+  --devnet_chain_setting '{"network_name": "localdev", "genesis_fork_version": "20000089", "genesis_validator_root": "0000000000000000000000000000000000000000000000000000000000000000"}' `
   --folder wallet_setup\validator_keys
 ```
 
