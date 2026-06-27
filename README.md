@@ -227,7 +227,7 @@ This creates:
 
 > The deposit data filename has a timestamp suffix. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
 > ```powershell
-> Rename-Item -Path "wallet_setup\validator_keys\deposit_data-*.json" -NewName "deposit_data.json" -Force
+> Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "deposit_data-*.json" | Rename-Item -NewName "deposit_data.json" -Force
 > ```
 
 #### Step 2b — Generate keys from Python source (if `deposit.exe` crashes)
