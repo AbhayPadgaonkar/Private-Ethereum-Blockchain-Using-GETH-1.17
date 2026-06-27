@@ -174,7 +174,126 @@ Remove-Item -Force *.log -ErrorAction SilentlyContinue
 
 ## Generate 3-Validator PoS Genesis
 
-Use a future Unix timestamp so the chain does not start before the validators are ready.
+Validator keys are **not** included in the repository. You must generate them with the official Ethereum Staking Deposit CLI before the network can start. There are two paths:
+
+- **Option A (recommended):** Generate wallet-based validator keys in PowerShell
+- **Option B (fallback):** Use Prysm's deterministic interop keys
+
+### Option A: Generate your own wallet-based validator keys in PowerShell (recommended)
+
+This is the realistic path: you create a fresh mnemonic, derive 3 validator keystores, and use the resulting `deposit_data.json` to build the beacon genesis.
+
+#### Step 1 — Download the staking-deposit-cli
+
+Download the latest Windows release from https://github.com/ethereum/staking-deposit-cli/releases and extract it into `private_ethereum_setup`.
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+Invoke-WebRequest -Uri "https://github.com/ethereum/staking-deposit-cli/releases/download/v2.8.0/staking_deposit-cli-948d3fc-windows-amd64.zip" -OutFile "staking-deposit-cli.zip"
+Expand-Archive -Path "staking-deposit-cli.zip" -DestinationPath "." -Force
+```
+
+You should now have a folder like `staking_deposit-cli-948d3fc-windows-amd64` containing `deposit.exe`.
+
+#### Step 2 — Generate keys with a new mnemonic
+
+Run the interactive CLI. It will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\staking_deposit-cli-948d3fc-windows-amd64\deposit.exe new-mnemonic `
+  --num_validators 3 `
+  --chain mainnet `
+  --folder wallet_setup\validator_keys
+```
+
+This creates:
+- `wallet_setup\validator_keys\deposit_data-*.json` (rename this to `deposit_data.json`)
+- `wallet_setup\validator_keys\keystore-m_12381_3600_*.json`
+
+> The staking CLI adds a timestamp suffix to the deposit data filename. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
+> ```powershell
+> Rename-Item -Path "wallet_setup\validator_keys\deposit_data-*.json" -NewName "deposit_data.json" -Force
+> ```
+
+#### Step 3 — Create password files
+
+```powershell
+"YOUR_KEYSTORE_PASSWORD" | Out-File -FilePath "wallet_setup\account_password.txt" -Encoding ASCII -NoNewline
+"YOUR_WALLET_PASSWORD"   | Out-File -FilePath "wallet_setup\wallet_password.txt" -Encoding ASCII -NoNewline
+```
+
+#### Step 4 — Import keystores into 3 separate Prysm wallets
+
+Put each keystore in its own directory, then import each one:
+
+```powershell
+New-Item -ItemType Directory -Path "wallet_setup\keys1","wallet_setup\keys2","wallet_setup\keys3" -Force
+
+# Copy one keystore per directory. The file names contain the validator index:
+#   keystore-m_12381_3600_0_0_0-*.json  -> wallet_setup\keys1
+#   keystore-m_12381_3600_1_0_0-*.json  -> wallet_setup\keys2
+#   keystore-m_12381_3600_2_0_0-*.json  -> wallet_setup\keys3
+
+.\validator.exe accounts import --wallet-dir=validator_wallet1 --keys-dir=wallet_setup\keys1 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
+.\validator.exe accounts import --wallet-dir=validator_wallet2 --keys-dir=wallet_setup\keys2 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
+.\validator.exe accounts import --wallet-dir=validator_wallet3 --keys-dir=wallet_setup\keys3 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
+```
+
+#### Step 5 — Generate genesis from the deposit data
+
+```powershell
+$futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+
+.\prysmctl.exe testnet generate-genesis `
+  --num-validators=0 `
+  --deposit-json-file=wallet_setup\validator_keys\deposit_data.json `
+  --output-ssz=genesis.ssz `
+  --chain-config-file=chain-config.yaml `
+  --geth-genesis-json-in=genesis.json `
+  --geth-genesis-json-out=genesis-pos.json `
+  --fork=deneb `
+  --genesis-time=$futureTime
+```
+
+> `--num-validators=0` tells Prysm not to create additional interop validators; the 3 validators come entirely from `deposit_data.json`.
+
+This creates:
+- `genesis.ssz` — beacon chain genesis state
+- `genesis-pos.json` — finalized Geth genesis with correct fork timestamps
+
+#### If the Windows binary has prompt issues
+
+Some Windows builds of `deposit.exe` have trouble with interactive password prompts in certain PowerShell environments. If that happens, use the Python source directly in PowerShell (no WSL needed):
+
+```powershell
+# Requires Python 3.12+ and pip
+python -V
+
+Invoke-WebRequest -Uri "https://github.com/ethereum/staking-deposit-cli/archive/refs/tags/v2.8.0.zip" -OutFile "staking-deposit-cli-src.zip"
+Expand-Archive -Path "staking-deposit-cli-src.zip" -DestinationPath "." -Force
+
+cd staking-deposit-cli-2.8.0
+pip install -r requirements.txt
+python setup.py install
+
+# Then run interactively in PowerShell
+cd ..
+python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
+  --num_validators 3 `
+  --chain mainnet `
+  --folder wallet_setup\validator_keys
+```
+
+Then continue from Step 3 above.
+
+---
+
+### Option B: Interop validators (fallback)
+
+If you do not want wallet-based keys, you can still use Prysm's deterministic interop keys:
 
 ```powershell
 $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
@@ -189,9 +308,7 @@ $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).To
   --genesis-time=$futureTime
 ```
 
-This creates:
-- `genesis.ssz` — beacon chain genesis state
-- `genesis-pos.json` — finalized Geth genesis with correct fork timestamps
+With interop keys, use the validator commands from the **Interop Validators** subsection later in this guide.
 
 ---
 
@@ -204,6 +321,33 @@ This creates:
 ```
 
 > **Important:** Use `--state.scheme hash` with Geth 1.17 for this local PoS setup.
+
+---
+
+## Quick Start: One-Command Network Launch
+
+Once you have `wallet_setup\validator_keys\deposit_data.json` (from Option A), start the whole network with:
+
+```powershell
+.\start-wallet-network.ps1
+```
+
+The script:
+1. Stops any running `geth`, `beacon-chain`, and `validator` processes
+2. Clears the validator slashing-protection DB (`%LOCALAPPDATA%\Eth2`)
+3. Regenerates `genesis.ssz` and `genesis-pos.json` from `wallet_setup\validator_keys\deposit_data.json`
+4. Re-initializes the three Geth datadirs
+5. Starts 3 Geth nodes, 3 beacon nodes, and 3 wallet-based validators
+6. Meshes Geth nodes via `--bootnodes` and beacon nodes via `--peer`
+
+Wait for the genesis time printed in the beacon windows, then verify:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/syncing'
+Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+If you prefer to start each component manually, continue with the next sections.
 
 ---
 
@@ -321,9 +465,11 @@ $enode3 = (.\geth.exe attach --exec "admin.nodeInfo.enode" http://127.0.0.1:1854
 
 ---
 
-## Realistic Sync: Start Node 1 First, Then Nodes 2 and 3
+## Realistic Sync: Start Node 1 First, Then Nodes 2 and 3 (Wallet-Based Validators)
 
 To demonstrate real beacon-chain syncing, start Node 1 first and let it build some chain history. Then start Nodes 2 and 3 so they actually download and verify blocks from Node 1.
+
+The validator commands below use the wallet-based keystores imported earlier. If you used interop genesis instead, see the **Interop Validators** subsection at the end of this section.
 
 ### Start Node 1 beacon and validator
 
@@ -358,12 +504,14 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
 
 .\validator.exe `
   --datadir validator_wallet1 --wallet-dir validator_wallet1 `
+  --wallet-password-file wallet_setup\wallet_password.txt `
   --chain-config-file chain-config.yaml `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
   --beacon-rpc-provider 127.0.0.1:4000 `
-  --interop-num-validators 1 --interop-start-index 0 `
   --accept-terms-of-use
 ```
+
+> **Note:** `--datadir` and `--wallet-dir` point to the same directory. The directory holds both the imported wallet and the validator's local slashing-protection database. Each validator process must have its own `--datadir`; otherwise the slashing DB is locked by another process.
 
 Wait until Node 1 has produced at least 20–30 blocks. You can watch it with:
 
@@ -459,6 +607,69 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
 
 .\validator.exe `
   --datadir validator_wallet2 --wallet-dir validator_wallet2 `
+  --wallet-password-file wallet_setup\wallet_password.txt `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4001 `
+  --accept-terms-of-use
+```
+
+PowerShell window 10 — Validator 3:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet3 --wallet-dir validator_wallet3 `
+  --wallet-password-file wallet_setup\wallet_password.txt `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4002 `
+  --accept-terms-of-use
+```
+
+### Watch the realistic sync
+
+Check Beacon Node 2 and 3 sync status right after startup:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/syncing'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/syncing'
+```
+
+You should see:
+- `is_syncing: true`
+- `sync_distance` showing how many slots behind Node 1 they are
+
+After a few seconds the `sync_distance` drops to `0` and `is_syncing` becomes `false`. This proves the beacon nodes are genuinely downloading and verifying consensus history from Node 1, just like a real Ethereum node catching up to the network.
+
+> **Why stagger the startup?** In a real network, nodes join after the chain has already produced many blocks. They must download history and catch up. Starting Node 1 first, then Nodes 2 and 3, reproduces this behavior so you can observe `is_syncing: true` dropping to `false`.
+
+### Interop Validators (fallback)
+
+If you generated `genesis.ssz` with `--num-validators=3` (Option C) instead of wallet-based deposit data, use these validator commands. They use deterministic interop keys and do not require imported wallets.
+
+PowerShell window 8 — Validator 1:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet1 --wallet-dir validator_wallet1 `
+  --chain-config-file chain-config.yaml `
+  --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
+  --beacon-rpc-provider 127.0.0.1:4000 `
+  --interop-num-validators 1 --interop-start-index 0 `
+  --accept-terms-of-use
+```
+
+PowerShell window 9 — Validator 2:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\validator.exe `
+  --datadir validator_wallet2 --wallet-dir validator_wallet2 `
   --chain-config-file chain-config.yaml `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
   --beacon-rpc-provider 127.0.0.1:4001 `
@@ -479,23 +690,6 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --interop-num-validators 1 --interop-start-index 2 `
   --accept-terms-of-use
 ```
-
-### Watch the realistic sync
-
-Check Beacon Node 2 and 3 sync status right after startup:
-
-```powershell
-Invoke-RestMethod -Uri 'http://127.0.0.1:3501/eth/v1/node/syncing'
-Invoke-RestMethod -Uri 'http://127.0.0.1:3502/eth/v1/node/syncing'
-```
-
-You should see:
-- `is_syncing: true`
-- `sync_distance` showing how many slots behind Node 1 they are
-
-After a few seconds the `sync_distance` drops to `0` and `is_syncing` becomes `false`. This proves the beacon nodes are genuinely downloading and verifying consensus history from Node 1, just like a real Ethereum node catching up to the network.
-
-> **Why stagger the startup?** In a real network, nodes join after the chain has already produced many blocks. They must download history and catch up. Starting Node 1 first, then Nodes 2 and 3, reproduces this behavior so you can observe `is_syncing: true` dropping to `false`.
 
 ---
 
@@ -795,8 +989,8 @@ The 3-node setup is just an example. You can create a network with **any number 
 
 1. Each Geth node needs a unique datadir, P2P port, HTTP port, Engine API port, and IPC pipe.
 2. Each beacon node needs a unique datadir, gRPC port, REST port, P2P ports, and one `--peer` pointing to the bootstrap node.
-3. Each validator needs a unique `--interop-start-index` and its own wallet datadir.
-4. To have `V` validators active from genesis, regenerate `genesis.ssz` with `--num-validators=V`.
+3. Each validator needs its own imported wallet directory and password file.
+4. To have `V` validators active from genesis, generate `V` wallet-based keystores + deposit data, then regenerate `genesis.ssz` with `--deposit-json-file` and `--num-validators=0`.
 
 ### Stop everything
 
@@ -824,14 +1018,43 @@ for ($i = 1; $i -le $N; $i++) {
 
 If you want any of these addresses funded at genesis, add them to `genesis.json` under `alloc` before the next step.
 
-### Regenerate genesis with N validators
+### Generate wallet-based validator keys and deposit data
+
+For a real network, generate `N` keystores and a single `deposit_data.json` with the PowerShell staking-deposit-cli commands from Option A in the genesis section. For this example, assume you already have `N` keystore files and `deposit_data.json` in `wallet_setup\validator_keys\`.
+
+Put each keystore into its own directory for import:
+
+```powershell
+$N = 5
+for ($i = 1; $i -le $N; $i++) {
+    New-Item -ItemType Directory -Path "wallet_setup\keys$i" -Force
+    # Copy keystore-m_12381_3600_($i-1)_0_0-*.json into wallet_setup\keys$i
+}
+```
+
+Import each keystore into its own Prysm wallet:
+
+```powershell
+$N = 5
+for ($i = 1; $i -le $N; $i++) {
+    .\validator.exe accounts import `
+      --wallet-dir=validator_wallet$i `
+      --keys-dir=wallet_setup\keys$i `
+      --wallet-password-file=wallet_setup\wallet_password.txt `
+      --account-password-file=wallet_setup\account_password.txt `
+      --accept-terms-of-use
+}
+```
+
+### Regenerate genesis from wallet deposit data
 
 ```powershell
 $N = 5
 $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
 
 .\prysmctl.exe testnet generate-genesis `
-  --num-validators=$N `
+  --num-validators=0 `
+  --deposit-json-file=wallet_setup\validator_keys\deposit_data.json `
   --output-ssz=genesis.ssz `
   --chain-config-file=chain-config.yaml `
   --geth-genesis-json-in=genesis.json `
@@ -840,7 +1063,7 @@ $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).To
   --genesis-time=$futureTime
 ```
 
-> `--num-validators=$N` hardcodes `N` validators with 32 ETH each into the beacon genesis state. You cannot add validators to a running chain this way; this only works when rebuilding from scratch.
+> `--num-validators=0` prevents Prysm from creating extra interop validators. The `N` active validators come entirely from the deposit data.
 
 ### Initialize all Geth datadirs
 
@@ -921,14 +1144,13 @@ $N = 5
 $i = 1  # change for each node
 
 $beaconGrpc = 3999 + $i
-$validatorIndex = $i - 1
 
 .\validator.exe `
   --datadir validator_wallet$i --wallet-dir validator_wallet$i `
+  --wallet-password-file wallet_setup\wallet_password.txt `
   --chain-config-file chain-config.yaml `
   --suggested-fee-recipient 0x98608ADf9c785d54f40cDcf6700E990771b19226 `
   --beacon-rpc-provider 127.0.0.1:$beaconGrpc `
-  --interop-num-validators 1 --interop-start-index $validatorIndex `
   --accept-terms-of-use
 ```
 
@@ -944,13 +1166,13 @@ $validatorIndex = $i - 1
 | Beacon REST port | `3499 + i` | `3503` |
 | Beacon P2P TCP | `12999 + i` | `13003` |
 | Beacon P2P UDP | `11999 + i` | `12003` |
-| Validator start index | `i - 1` | `3` |
+| Validator wallet | `validator_wallet{i}` | `validator_wallet4` |
 
 ### Important rules
 
 - A new **Geth node** can join anytime with `--bootnodes` or `admin.addPeer`.
 - A new **beacon node** can sync from existing peers with `--peer` and `--min-sync-peers 1`.
-- A new **validator** can only be added from genesis (as shown here) or through a real deposit contract and activation queue. This devnet has no real deposit contract, so genesis regeneration is the only option.
+- A new **validator** can only be added from genesis (via wallet keystores and deposit data, as shown here) or through a real deposit contract and activation queue. This devnet has no real deposit contract, so genesis regeneration with new deposit data is the only option.
 
 ---
 

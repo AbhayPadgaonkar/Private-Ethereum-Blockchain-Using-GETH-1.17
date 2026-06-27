@@ -1,0 +1,46 @@
+# Staking deposit CLI downloads
+staking-deposit-cli*.zip
+staking_deposit-cli-*/
+staking-deposit-cli-*/
+
+# Generated validator keys and passwords (NEVER commit these)
+wallet_setup/
+
+# Binaries
+*.exe
+
+# Geth runtime data
+node*/geth/
+node*/blobpool/
+node*/password
+
+# Prysm runtime data
+beacondata*/
+
+# Generated runtime files
+*.log
+*.ipc
+.beacon*
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Temporary / test files
+tmp_*
+import_test*
+test_decrypt.js
+walletpass.txt
+account_*.log
+geth_init*.log
+new_account*.log
+npm_install.log
+prysm_genesis*.log
+send_tx.log
+test_*.log
+unlock_test*.log
+update_verify*.log
+
+# IDE
+.vscode/
+.idea/
