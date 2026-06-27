@@ -213,6 +213,8 @@ This creates:
 - `wallet_setup\validator_keys\deposit_data-*.json` (rename this to `deposit_data.json`)
 - `wallet_setup\validator_keys\keystore-m_12381_3600_*.json`
 
+> **Why `--chain mainnet` for a private devnet?** The deposit CLI's `--chain` flag only selects the BLS signing domain. It does **not** connect you to real Ethereum or make these validators active on mainnet. Prysm reads the actual network rules from `chain-config.yaml` (`CONFIG_NAME: localdev`, `chainId: 12345`, etc.), so the deposits are valid only for your local devnet.
+
 > The staking CLI adds a timestamp suffix to the deposit data filename. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
 > ```powershell
 > Rename-Item -Path "wallet_setup\validator_keys\deposit_data-*.json" -NewName "deposit_data.json" -Force
