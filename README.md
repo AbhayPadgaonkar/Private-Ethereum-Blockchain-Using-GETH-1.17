@@ -196,7 +196,9 @@ Expand-Archive -Path "staking-deposit-cli.zip" -DestinationPath "." -Force
 
 You should now have a folder like `staking_deposit-cli-948d3fc-windows-amd64` containing `deposit.exe`.
 
-#### Step 2 — Generate keys with a new mnemonic
+> **Important:** The released Windows `deposit.exe` has known issues with interactive password prompts in PowerShell. If the interactive command in Step 2 crashes with a `UnicodeEncodeError`, use the Python source method shown in Step 2b instead.
+
+#### Step 2a — Generate keys with the Windows binary (interactive)
 
 Create the output directory first, then run the interactive CLI. It will ask for a keystore password, ask you to confirm it, then print a **24-word mnemonic**. Save the mnemonic and password somewhere safe.
 
@@ -217,10 +219,54 @@ This creates:
 
 > **Why `--chain mainnet` for a private devnet?** The deposit CLI's `--chain` flag only selects the BLS signing domain. It does **not** connect you to real Ethereum or make these validators active on mainnet. Prysm reads the actual network rules from `chain-config.yaml` (`CONFIG_NAME: localdev`, `chainId: 12345`, etc.), so the deposits are valid only for your local devnet.
 
-> The staking CLI adds a timestamp suffix to the deposit data filename. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
+> The staking CLI creates an extra nested `validator_keys` folder (`wallet_setup\validator_keys\validator_keys`). Move the files up and delete the duplicate folder before continuing:
+> ```powershell
+> Move-Item -Path "wallet_setup\validator_keys\validator_keys\*" -Destination "wallet_setup\validator_keys\" -Force
+> Remove-Item -Recurse -Force "wallet_setup\validator_keys\validator_keys"
+> ```
+
+> The deposit data filename has a timestamp suffix. `start-wallet-network.ps1` will auto-rename it, or you can do it manually:
 > ```powershell
 > Rename-Item -Path "wallet_setup\validator_keys\deposit_data-*.json" -NewName "deposit_data.json" -Force
 > ```
+
+#### Step 2b — Generate keys from Python source (if `deposit.exe` crashes)
+
+If the Windows binary crashes on the password prompt, use the Python source directly in PowerShell (no WSL needed).
+
+```powershell
+# Requires Python 3.12+ and pip
+python -V
+
+Invoke-WebRequest -Uri "https://github.com/ethereum/staking-deposit-cli/archive/refs/tags/v2.8.0.zip" -OutFile "staking-deposit-cli-src.zip"
+Expand-Archive -Path "staking-deposit-cli-src.zip" -DestinationPath "." -Force
+
+cd staking-deposit-cli-2.8.0
+pip install -r requirements.txt
+python setup.py install
+```
+
+Then generate the keys interactively:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
+
+python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
+  --num_validators 3 `
+  --chain mainnet `
+  --folder wallet_setup\validator_keys
+```
+
+Move the files out of the nested folder:
+
+```powershell
+Move-Item -Path "wallet_setup\validator_keys\validator_keys\*" -Destination "wallet_setup\validator_keys\" -Force
+Remove-Item -Recurse -Force "wallet_setup\validator_keys\validator_keys"
+```
+
+Then continue from Step 3.
 
 #### Step 3 — Create password files
 
@@ -238,7 +284,7 @@ Use the **same keystore password you just typed in the deposit CLI** (not a plac
 
 #### Step 4 — Import keystores into 3 separate Prysm wallets
 
-Create per-validator directories and copy one keystore into each directory. The filename contains the validator index (`m_12381_3600_<index>_0_0`), so this PowerShell command copies them automatically:
+Create per-validator directories and copy one keystore into each directory:
 
 ```powershell
 New-Item -ItemType Directory -Path "wallet_setup\keys1","wallet_setup\keys2","wallet_setup\keys3" -Force
@@ -248,6 +294,17 @@ Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "keystore-m_12381_3600
     $dest = "wallet_setup\keys$($idx + 1)"
     Copy-Item -Path $_.FullName -Destination $dest -Force
     Write-Host "Copied $($_.Name) -> $dest"
+}
+```
+
+If the copy command prints nothing, the filenames may not follow the expected pattern. In that case, copy the first three keystores sorted by name:
+
+```powershell
+$files = Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "keystore-m_*.json" | Sort-Object Name
+for ($i = 0; $i -lt 3; $i++) {
+    $dest = "wallet_setup\keys$($i + 1)"
+    Copy-Item -Path $files[$i].FullName -Destination $dest -Force
+    Write-Host "Copied $($files[$i].Name) -> $dest"
 }
 ```
 
@@ -281,31 +338,7 @@ This creates:
 - `genesis.ssz` — beacon chain genesis state
 - `genesis-pos.json` — finalized Geth genesis with correct fork timestamps
 
-#### If the Windows binary has prompt issues
 
-Some Windows builds of `deposit.exe` have trouble with interactive password prompts in certain PowerShell environments. If that happens, use the Python source directly in PowerShell (no WSL needed):
-
-```powershell
-# Requires Python 3.12+ and pip
-python -V
-
-Invoke-WebRequest -Uri "https://github.com/ethereum/staking-deposit-cli/archive/refs/tags/v2.8.0.zip" -OutFile "staking-deposit-cli-src.zip"
-Expand-Archive -Path "staking-deposit-cli-src.zip" -DestinationPath "." -Force
-
-cd staking-deposit-cli-2.8.0
-pip install -r requirements.txt
-python setup.py install
-
-# Then run interactively in PowerShell
-cd ..
-New-Item -ItemType Directory -Path "wallet_setup\validator_keys" -Force
-python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
-  --num_validators 3 `
-  --chain mainnet `
-  --folder wallet_setup\validator_keys
-```
-
-Then continue from Step 3 above.
 
 ---
 
