@@ -231,16 +231,22 @@ This creates:
 
 #### Step 4 — Import keystores into 3 separate Prysm wallets
 
-Put each keystore in its own directory, then import each one:
+Create per-validator directories and copy one keystore into each directory. The filename contains the validator index (`m_12381_3600_<index>_0_0`), so this PowerShell command copies them automatically:
 
 ```powershell
 New-Item -ItemType Directory -Path "wallet_setup\keys1","wallet_setup\keys2","wallet_setup\keys3" -Force
 
-# Copy one keystore per directory. The file names contain the validator index:
-#   keystore-m_12381_3600_0_0_0-*.json  -> wallet_setup\keys1
-#   keystore-m_12381_3600_1_0_0-*.json  -> wallet_setup\keys2
-#   keystore-m_12381_3600_2_0_0-*.json  -> wallet_setup\keys3
+Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "keystore-m_12381_3600_*_0_0-*.json" | ForEach-Object {
+    $idx = [int]($_.Name -split '_')[3]
+    $dest = "wallet_setup\keys$($idx + 1)"
+    Copy-Item -Path $_.FullName -Destination $dest -Force
+    Write-Host "Copied $($_.Name) -> $dest"
+}
+```
 
+Then import each keystore directory into its own Prysm wallet:
+
+```powershell
 .\validator.exe accounts import --wallet-dir=validator_wallet1 --keys-dir=wallet_setup\keys1 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
 .\validator.exe accounts import --wallet-dir=validator_wallet2 --keys-dir=wallet_setup\keys2 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
 .\validator.exe accounts import --wallet-dir=validator_wallet3 --keys-dir=wallet_setup\keys3 --wallet-password-file=wallet_setup\wallet_password.txt --account-password-file=wallet_setup\account_password.txt --accept-terms-of-use
