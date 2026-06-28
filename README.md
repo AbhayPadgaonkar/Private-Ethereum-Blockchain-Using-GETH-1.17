@@ -228,12 +228,13 @@ Patch the deposit data so it matches the local devnet's `GENESIS_FORK_VERSION` (
 
 ```powershell
 $path = Get-ChildItem -Path "wallet_setup\validator_keys" -Filter "deposit_data-*.json" | Select-Object -First 1
+Remove-Item -Force "wallet_setup\validator_keys\deposit_data.json" -ErrorAction SilentlyContinue
+
 $content = Get-Content $path.FullName -Raw
 $content = $content -replace '"fork_version": "00000000"', '"fork_version": "20000089"'
 $content = $content -replace '"network_name": "mainnet"', '"network_name": "localdev"'
 Set-Content -Path $path.FullName -Value $content -NoNewline
 
-# Rename to deposit_data.json
 Rename-Item -Path $path.FullName -NewName "deposit_data.json" -Force
 
 # Verify
