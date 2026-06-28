@@ -6,8 +6,8 @@
 #   4. Re-initializes Geth datadirs
 #   5. Starts 3 Geth nodes, 3 beacon nodes, and 3 wallet-based validators
 #
-# PREREQUISITE: You must generate wallet-based validator keys first.
-# See README.md "Generate 3-Validator PoS Genesis" -> Option A.
+# PREREQUISITE: You must generate wallet-based validator keys first (README Option B or C).
+# If you used interop validators (README Option A), start the components manually.
 
 $baseDir = "C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup"
 Set-Location $baseDir
@@ -32,12 +32,14 @@ if (-not (Test-Path -LiteralPath $depositJson)) {
 Missing deposit data: $depositJson
 
 You must generate wallet-based validator keys before running this script.
-Run the Ethereum Staking Deposit CLI in PowerShell:
+Run the Ethereum Staking Deposit CLI in WSL or PowerShell (README Option B or C):
 
-  .\staking_deposit-cli-948d3fc-windows-amd64\deposit.exe new-mnemonic `
-    --num_validators 3 --chain mainnet --folder wallet_setup\validator_keys
+  python .\staking-deposit-cli-2.8.0\staking_deposit\deposit.py new-mnemonic `
+    --num_validators 3 `
+    --devnet_chain_setting '{"network_name": "localdev", "genesis_fork_version": "20000089", "genesis_validator_root": "0000000000000000000000000000000000000000000000000000000000000000"}' `
+    --folder wallet_setup\validator_keys
 
-Then create password files and import the keystores. See README.md for full steps.
+Then create password files and import the keystores. If you want interop validators instead, start the network manually.
 "@
     exit 1
 }
