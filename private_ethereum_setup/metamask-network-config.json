@@ -1,0 +1,18 @@
+{
+  "networkName": "Local PoS Devnet",
+  "chainId": 12345,
+  "currencySymbol": "ETH",
+  "currencyDecimals": 18,
+  "rpcUrls": [
+    "http://127.0.0.1:18545",
+    "http://127.0.0.1:18546",
+    "http://127.0.0.1:18547",
+    "http://127.0.0.1:18548",
+    "http://127.0.0.1:18549"
+  ],
+  "notes": [
+    "MetaMask can only use one RPC URL at a time.",
+    "Pick any node from the list above; all nodes share the same chain state.",
+    "If the selected node is stopped, switch to another RPC URL in MetaMask."
+  ]
+}

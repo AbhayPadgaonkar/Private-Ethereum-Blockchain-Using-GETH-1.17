@@ -7,9 +7,19 @@ const SENDER_KEYSTORE_DIR = path.join(__dirname, 'node1', 'keystore');
 const SENDER_PASSWORD_FILE = path.join(__dirname, 'node1', 'password-clean');
 const RECIPIENT_KEYSTORE_DIR = path.join(__dirname, 'node2', 'keystore');
 const RECIPIENT_PASSWORD_FILE = path.join(__dirname, 'node2', 'password-clean');
-const RPC_URL_NODE1 = 'http://127.0.0.1:18545';
-const BEACON_REST = 'http://127.0.0.1:3500';
+const RPC_URL_NODE1 = process.env.RPC_URL || 'http://127.0.0.1:18545';
+const BEACON_REST = process.env.BEACON_REST || 'http://127.0.0.1:3500';
 const SENDER_ADDRESS = '0x014BFF6c76d88e815075c0323C3904Fe635c2325';
+
+function getNodeCount() {
+  const env = process.env.NODE_COUNT;
+  if (env) return parseInt(env, 10);
+  return 3;
+}
+
+function getNodeRpcPort(i) {
+  return 18544 + i;
+}
 
 function beaconGet(endpoint) {
   return new Promise((resolve, reject) => {
@@ -134,14 +144,20 @@ async function main() {
   await getBalance(providerNode1, recipientWallet.address, 'Node 2 recipient');
 
   console.log('\n--- Cross-node verification ---');
-  for (const port of [18545, 18546, 18547]) {
-    const provider = new ethers.providers.JsonRpcProvider(`http://127.0.0.1:${port}`);
-    const senderBal = ethers.utils.formatEther(await provider.getBalance(senderWallet.address));
-    const recipientBal = ethers.utils.formatEther(await provider.getBalance(recipientWallet.address));
-    console.log(`Node on port ${port} -> sender: ${senderBal} ETH, recipient: ${recipientBal} ETH`);
+  const nodeCount = getNodeCount();
+  for (let i = 1; i <= nodeCount; i++) {
+    const port = getNodeRpcPort(i);
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(`http://127.0.0.1:${port}`);
+      const senderBal = ethers.utils.formatEther(await provider.getBalance(senderWallet.address));
+      const recipientBal = ethers.utils.formatEther(await provider.getBalance(recipientWallet.address));
+      console.log(`Node ${i} (port ${port}) -> sender: ${senderBal} ETH, recipient: ${recipientBal} ETH`);
+    } catch (e) {
+      console.log(`Node ${i} (port ${port}) -> unreachable (${e.message})`);
+    }
   }
 
-  console.log('\nNote: The transaction was submitted through Node 1 RPC, but the balance change is visible on all nodes because they share the same blockchain state.');
+  console.log(`\nNote: The transaction was submitted through Node 1 RPC, but the balance change is visible on all ${nodeCount} nodes because they share the same blockchain state.`);
 }
 
 main().catch(err => {

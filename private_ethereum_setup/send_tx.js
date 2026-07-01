@@ -5,8 +5,8 @@ const { ethers } = require('ethers');
 
 const KEYSTORE_DIR = path.join(__dirname, 'node1', 'keystore');
 const PASSWORD_FILE = path.join(__dirname, 'node1', 'password-clean');
-const RPC_URL = 'http://127.0.0.1:18545';
-const BEACON_REST = 'http://127.0.0.1:3500';
+const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:18545';
+const BEACON_REST = process.env.BEACON_REST || 'http://127.0.0.1:3500';
 const TO_ADDRESS = '0x7B25e791D24A3F5c453A9E5468cF6cEa2243092C';
 
 function beaconGet(endpoint) {

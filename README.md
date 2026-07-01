@@ -4,7 +4,7 @@ A Windows-friendly setup for a local private Ethereum network using **Geth 1.17*
 
 > **Note:** Geth 1.17+ only supports Proof-of-Stake (PoS) networks. The older Clique (Proof of Authority) mining setup does not work with Geth 1.17. This guide uses PoS with Prysm.
 
-This README covers a **three-node devnet** — three Geth execution nodes, three Prysm beacon nodes, and three Prysm validators that peer and sync on the same Windows machine.
+This README covers an **N-node devnet** — any number of Geth execution nodes, Prysm beacon nodes, and Prysm validators that peer and sync on the same Windows machine. The examples use 3 nodes by default, but you can scale to 6, 9, or more by changing one parameter.
 
 ---
 
@@ -93,17 +93,20 @@ npm install
 
 The repo already contains the required files in `private_ethereum_setup`:
 - `genesis.json` — PoS-ready Geth genesis
-- `chain-config.yaml` — Prysm chain config
+- `chain-config.yaml` — Prysm chain configuration
 - `jwt.hex` — JWT secret for Geth-Prysm auth
 
-The genesis already funds address `0x014BFF6c76d88e815075c0323C3904Fe635c2325`, and the `node1\keystore` already contains the matching keystore. The transaction scripts are configured to use this account, so you can skip the rest of this section on first run.
+The genesis funds address `0x014BFF6c76d88e815075c0323C3904Fe635c2325`, and the `node1\keystore` already contains the matching keystore. The transaction scripts are configured to use this account, so you can skip the rest of this section on first run.
 
-If you want to use your own funded account instead, create a password file and a new keystore account, then edit `genesis.json` to fund the printed address.
+If you want to use your own funded account instead, create a password file and a new keystore account, then edit `genesis.json` to fund the printed address. To create a funded account on every node (useful for MetaMask or N-node demos):
 
 ```powershell
-"node1" | Out-File -FilePath "node1\password-clean" -Encoding ASCII -NoNewline
-
-.\geth.exe account new --datadir node1 --password node1\password-clean
+$N = 6
+for ($i = 1; $i -le $N; $i++) {
+    New-Item -ItemType Directory -Path "node$i" -Force
+    "node$i" | Out-File -FilePath "node$i\password-clean" -Encoding ASCII -NoNewline
+    .\geth.exe account new --datadir node$i --password node$i\password-clean
+}
 ```
 
 Save the printed address (it looks like `0x...`). You must edit `private_ethereum_setup\genesis.json` to fund this address and keep `extradata` as `0x`.
@@ -161,18 +164,84 @@ Run in PowerShell (admin rights not required):
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 
-Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator') } | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 3
+.\clean-state.ps1 -NodeCount 3
+```
 
-@('node1/geth','node2/geth','node3/geth','beacondata1','beacondata2','beacondata3','validator_wallet1','validator_wallet2','validator_wallet3') | ForEach-Object {
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $_
-}
-Remove-Item -Force *.log -ErrorAction SilentlyContinue
+The default `NodeCount` is 3. Use a larger number if you previously ran with more nodes. This stops processes and deletes generated state (`node*/geth`, `beacondata*`, `validator_wallet*`, `genesis.ssz`, `genesis-pos.json`, logs) but preserves keystore directories and `wallet_setup/`.
+
+To stop only the running processes without deleting data:
+
+```powershell
+.\stop-network.ps1
 ```
 
 ---
 
-## Generate 3-Validator PoS Genesis
+## One-Click Start: N-Node Interop Devnet
+
+The fastest way to start the network is the interop script. It generates a fresh genesis, initializes all Geth datadirs, and starts N Geth + N beacon + N validator processes.
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+.\start-interop-network.ps1 -NodeCount 6 -GenesisDelaySeconds 180
+```
+
+Wait for the genesis time printed in the beacon logs, then verify:
+
+```powershell
+.\check-network-health.ps1 -NodeCount 6 -Watch
+```
+
+When `BeaconSyncing` is `False` and `GethPeers` > 0 on every node, send a test transaction:
+
+```powershell
+$env:NODE_COUNT = 6
+node send_tx_node1_to_node2.js
+```
+
+To stop:
+
+```powershell
+.\stop-network.ps1
+```
+
+---
+
+## One-Click Start: N-Node Wallet-Based Devnet
+
+If you already generated wallet-based validator keys and imported them into `validator_wallet1..N`, use:
+
+```powershell
+.\start-wallet-network-n.ps1 -NodeCount 6 -GenesisDelaySeconds 180
+```
+
+Prerequisites:
+- `wallet_setup\validator_keys\deposit_data.json` exists and contains `N` deposits.
+- `wallet_setup\wallet_password.txt` and `wallet_setup\account_password.txt` exist.
+- `validator_wallet1..N` directories have been imported.
+
+---
+
+## Port Reference
+
+| Component | Formula for Node `i` | Node 1 | Node 2 | Node 3 | Node 6 |
+|-----------|----------------------|--------|--------|--------|--------|
+| Geth P2P port | `30305 + i` | `30306` | `30307` | `30308` | `30311` |
+| Geth HTTP port | `18544 + i` | `18545` | `18546` | `18547` | `18550` |
+| Engine API port | `8550 + i` | `8551` | `8552` | `8553` | `8556` |
+| Geth IPC pipe | `geth{i}.ipc` | `geth1.ipc` | `geth2.ipc` | `geth3.ipc` | `geth6.ipc` |
+| Beacon gRPC port | `3999 + i` | `4000` | `4001` | `4002` | `4005` |
+| Beacon REST port | `3499 + i` | `3500` | `3501` | `3502` | `3505` |
+| Beacon P2P TCP | `12999 + i` | `13000` | `13001` | `13002` | `13005` |
+| Beacon P2P UDP | `11999 + i` | `12000` | `12001` | `12002` | `12005` |
+| Validator wallet | `validator_wallet{i}` | `validator_wallet1` | `validator_wallet2` | `validator_wallet3` | `validator_wallet6` |
+
+Use these formulas when connecting MetaMask, querying RPC, or debugging individual nodes.
+
+---
+
+## Generate 3-Validator PoS Genesis (Manual Steps)
 
 There are three ways to get validator keys:
 
@@ -186,15 +255,16 @@ There are three ways to get validator keys:
 
 ### Option A: Interop validators (recommended)
 
-This is the fastest path. Prysm generates 3 deterministic validator keys internally from a built-in seed. No staking CLI, no wallets, no passwords.
+This is the fastest path. Prysm generates `N` deterministic validator keys internally from a built-in seed. No staking CLI, no wallets, no passwords.
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
 
 $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+$N = 6
 
 .\prysmctl.exe testnet generate-genesis `
-  --num-validators=3 `
+  --num-validators=$N `
   --output-ssz=genesis.ssz `
   --chain-config-file=chain-config.yaml `
   --geth-genesis-json-in=genesis.json `
@@ -204,10 +274,12 @@ $futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).To
 ```
 
 This creates:
-- `genesis.ssz` — beacon chain genesis state with 3 built-in validators
+- `genesis.ssz` — beacon chain genesis state with `N` built-in validators
 - `genesis-pos.json` — finalized Geth genesis with correct fork timestamps
 
 Use the **Interop Validators** commands later in this guide.
+
+> Replace `$N` with however many nodes/validators you want. Every node gets one validator in the default setup.
 
 ---
 
@@ -430,48 +502,60 @@ Same as Option B Step 6.
 
 ---
 
-## Initialize the Three Geth Datadirs
+## Initialize the Geth Datadirs
 
 ```powershell
-.\geth.exe init --datadir=node1 --state.scheme hash genesis-pos.json
-.\geth.exe init --datadir=node2 --state.scheme hash genesis-pos.json
-.\geth.exe init --datadir=node3 --state.scheme hash genesis-pos.json
+$N = 6
+for ($i = 1; $i -le $N; $i++) {
+    .\geth.exe init --datadir=node$i --state.scheme hash genesis-pos.json
+}
 ```
 
-> **Important:** Use `--state.scheme hash` with Geth 1.17 for this local PoS setup.
+> **Important:** Use `--state.scheme hash` with Geth 1.17 for this local PoS setup. Replace `$N` with your desired node count.
 
 ---
 
 ## Quick Start: One-Command Network Launch
 
-If you used Option B or C (wallet-based validators), start the whole network with:
+If you used Option B or C (wallet-based validators) and imported exactly 3 wallets, use the legacy 3-node script:
 
 ```powershell
 .\start-wallet-network.ps1
 ```
 
-If you used Option A (interop validators), start each component manually as shown in the next sections, or edit `start-wallet-network.ps1` to remove the wallet validation checks.
+For N wallet-based nodes, use:
 
-The script:
+```powershell
+.\start-wallet-network-n.ps1 -NodeCount 6
+```
+
+If you used Option A (interop validators), use:
+
+```powershell
+.\start-interop-network.ps1 -NodeCount 6
+```
+
+The N-node scripts stop old processes, regenerate genesis, initialize datadirs, and start all EL/CL/VC processes automatically.
+
+The 3-node legacy script:
 1. Stops any running `geth`, `beacon-chain`, and `validator` processes
 2. Clears the validator slashing-protection DB (`%LOCALAPPDATA%\Eth2`)
 3. Regenerates `genesis.ssz` and `genesis-pos.json` from `wallet_setup\validator_keys\deposit_data.json`
 4. Re-initializes the three Geth datadirs
-5. Starts 3 Geth nodes, 3 beacon nodes, and 3 wallet-based validators
+5. Starts N Geth nodes, N beacon nodes, and N wallet-based validators
 6. Meshes Geth nodes via `--bootnodes` and beacon nodes via `--peer`
 
 Wait for the genesis time printed in the beacon windows, then verify:
 
 ```powershell
-Invoke-RestMethod -Uri 'http://127.0.0.1:3500/eth/v1/node/syncing'
-Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+.\check-network-health.ps1 -NodeCount 6 -Watch
 ```
 
 If you prefer to start each component manually, continue with the next sections.
 
 ---
 
-## Start Geth Node 1
+## Manual Start: Geth Node 1
 
 PowerShell window 1:
 
@@ -481,7 +565,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
 .\geth.exe `
   --datadir node1 `
   --port 30306 `
-  --networkid 123454321 `
+  --networkid 12345 `
   --syncmode full `
   --state.scheme hash `
   --http --http.port 18545 `
@@ -510,9 +594,9 @@ Write-Host "Node1 local enode: $enode1Local"
 
 ---
 
-## Start Geth Nodes 2 and 3
+## Manual Start: Geth Nodes 2 and 3
 
-PowerShell window 2 (replace `<ENODE1>` with the local enode value):
+PowerShell window 2 (replace `\u003cENODE1\u003e` with the local enode value):
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
@@ -520,7 +604,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
 .\geth.exe `
   --datadir node2 `
   --port 30307 `
-  --networkid 123454321 `
+  --networkid 12345 `
   --syncmode full `
   --state.scheme hash `
   --http --http.port 18546 `
@@ -529,7 +613,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --authrpc.port 8552 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
   --authrpc.jwtsecret jwt.hex `
   --ipcpath geth2.ipc `
-  --bootnodes "<ENODE1>"
+  --bootnodes "\u003cENODE1\u003e"
 ```
 
 PowerShell window 3:
@@ -540,7 +624,7 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
 .\geth.exe `
   --datadir node3 `
   --port 30308 `
-  --networkid 123454321 `
+  --networkid 12345 `
   --syncmode full `
   --state.scheme hash `
   --http --http.port 18547 `
@@ -549,10 +633,12 @@ cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_s
   --authrpc.port 8553 --authrpc.addr 127.0.0.1 --authrpc.vhosts="*" `
   --authrpc.jwtsecret jwt.hex `
   --ipcpath geth3.ipc `
-  --bootnodes "<ENODE1>"
+  --bootnodes "\u003cENODE1\u003e"
 ```
 
 > **Why `--ipcpath`?** Each Geth node needs a unique IPC pipe. Without it, Node 2/3 try to open the default pipe, which Node 1 already owns, causing `Access is denied`.
+
+> For more than 3 nodes, use the formulas in the **Port Reference** table and pass the Node 1 enode to every other node.
 
 ---
 
@@ -916,17 +1002,26 @@ Balance after sender: 99989.999968499999853 ETH
 Balance of recipient: 10.0 ETH
 ```
 
-After the transaction is mined, verify the recipient balance on all three nodes:
+After the transaction is mined, verify the recipient balance on all nodes:
 
 ```powershell
+$N = 6
 $body = '{"jsonrpc":"2.0","method":"eth_getBalance","params":["RECIPIENT_ADDRESS","latest"],"id":1}'
-
-Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body $body
-Invoke-RestMethod -Uri 'http://127.0.0.1:18546' -Method POST -ContentType 'application/json' -Body $body
-Invoke-RestMethod -Uri 'http://127.0.0.1:18547' -Method POST -ContentType 'application/json' -Body $body
+for ($i = 1; $i -le $N; $i++) {
+    $port = 18544 + $i
+    Write-Host "Node $i port $port -> " -NoNewline
+    Invoke-RestMethod -Uri "http://127.0.0.1:$port" -Method POST -ContentType "application/json" -Body $body | Select-Object -ExpandProperty result
+}
 ```
 
-All three should return the same non-zero balance, proving the transaction propagated and state is consistent across the network.
+All nodes should return the same non-zero balance, proving the transaction propagated and state is consistent across the network.
+
+To use the cross-node verification script with more than 3 nodes:
+
+```powershell
+$env:NODE_COUNT = 6
+node send_tx_node1_to_node2.js
+```
 
 ### How this proves PoS
 
@@ -966,6 +1061,9 @@ Save the printed address.
 
 ```powershell
 cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+# Default is 3 nodes; set NODE_COUNT for larger networks
+$env:NODE_COUNT = 6
 node send_tx_node1_to_node2.js
 ```
 
@@ -1016,6 +1114,263 @@ This demonstrates that ETH moves from one address to another on the shared ledge
 
 ---
 
+## Connect MetaMask to the Devnet
+
+MetaMask can talk to **one Geth RPC endpoint at a time**. Because all nodes share the same chain state, any node works.
+
+> **Already have the original funded account?** If `node1\keystore` contains the pre-funded account (`0x014BFF6c76d88e815075c0323C3904Fe635c2325`), you can export its private key directly with `node export-private-key.js` and import it into MetaMask, skipping the wallet-generation step below.
+
+### Generate funded wallets for each node
+
+Run this once to create one wallet per node, fund each in `genesis.json`, and export the private keys:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+# Create 5 wallets (one per node), fund each with 100,000 ETH
+$env:WALLET_COUNT = 5
+node create-funded-wallets.js
+```
+
+This writes:
+- `node1/keystore/` ... `node5/keystore/` — Geth keystores
+- `node1/password-clean` ... `node5/password-clean` — ASCII passwords
+- `metamask-wallets.json` — addresses + private keys + RPC URLs
+- `metamask-wallets.csv` — same data in CSV format
+
+> **Security:** `metamask-wallets.json` and `.csv` contain private keys. Keep them local and never commit them.
+
+You must regenerate `genesis-pos.json` and re-initialize the Geth datadirs after changing `genesis.json`:
+
+```powershell
+$futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+$N = 5
+
+.\prysmctl.exe testnet generate-genesis `
+  --num-validators=$N `
+  --output-ssz=genesis.ssz `
+  --chain-config-file=chain-config.yaml `
+  --geth-genesis-json-in=genesis.json `
+  --geth-genesis-json-out=genesis-pos.json `
+  --fork=deneb `
+  --genesis-time=$futureTime
+
+for ($i = 1; $i -le $N; $i++) {
+    .\geth.exe init --datadir=node$i --state.scheme hash genesis-pos.json
+}
+```
+
+Then start the network:
+
+```powershell
+.\start-interop-network.ps1 -NodeCount 5 -GenesisDelaySeconds 180
+```
+
+### Import a private key into MetaMask
+
+1. Open `metamask-wallets.csv`.
+2. Copy the `privateKey` for the node you want to use.
+3. In MetaMask, click the account menu → **Import account** → paste the private key → **Import**.
+
+### Add the custom network in MetaMask
+
+| Setting | Value |
+|---|---|
+| Network name | `Local PoS Devnet` |
+| New RPC URL | `http://127.0.0.1:18545` (or any node port) |
+| Chain ID | `12345` |
+| Currency symbol | `ETH` |
+| Block explorer URL | leave blank |
+
+Available RPC URLs for 5 nodes:
+- Node 1: `http://127.0.0.1:18545`
+- Node 2: `http://127.0.0.1:18546`
+- Node 3: `http://127.0.0.1:18547`
+- Node 4: `http://127.0.0.1:18548`
+- Node 5: `http://127.0.0.1:18549`
+
+If MetaMask says "Unable to connect", make sure the selected Geth node is running and try another node's RPC URL.
+
+### Use the built-in MetaMask wallet page
+
+Open `private_ethereum_setup\metamask-wallet.html` in a browser with MetaMask installed. It will:
+- Add the `Local PoS Devnet` network
+- Connect your MetaMask account
+- Show the account balance
+- Let you send ETH to another address
+
+### Export a private key from an existing keystore
+
+If you already have a Geth keystore and want its private key for MetaMask:
+
+```powershell
+node export-private-key.js
+```
+
+By default it reads `node1\keystore` and `node1\password-clean`. Override with:
+
+```powershell
+$env:KEYSTORE_DIR = "node2\keystore"
+$env:PASSWORD_FILE = "node2\password-clean"
+node export-private-key.js
+```
+
+---
+
+## Test 5-Node PoS with MetaMask
+
+This section walks through a complete end-to-end test: start a 5-node devnet, import funded accounts into MetaMask, send a transaction, and verify it propagated to all nodes.
+
+### 1. Prepare wallets and genesis
+
+If you have not already generated the 5 funded wallets:
+
+```powershell
+cd C:\BlocksScan\Private-Ethereum-Blockchain-setup-using-Geth\private_ethereum_setup
+
+$env:WALLET_COUNT = 5
+node create-funded-wallets.js
+```
+
+Then regenerate the PoS genesis and initialize all 5 datadirs:
+
+```powershell
+$futureTime = [int][double]::Parse((Get-Date -Date (Get-Date).AddSeconds(180).ToUniversalTime() -UFormat %s))
+$N = 5
+
+.\prysmctl.exe testnet generate-genesis `
+  --num-validators=$N `
+  --output-ssz=genesis.ssz `
+  --chain-config-file=chain-config.yaml `
+  --geth-genesis-json-in=genesis.json `
+  --geth-genesis-json-out=genesis-pos.json `
+  --fork=deneb `
+  --genesis-time=$futureTime
+
+for ($i = 1; $i -le $N; $i++) {
+    .\geth.exe init --datadir=node$i --state.scheme hash genesis-pos.json
+}
+```
+
+### 2. Start the 5-node network
+
+```powershell
+.\start-interop-network.ps1 -NodeCount 5 -GenesisDelaySeconds 180
+```
+
+Wait for genesis time, then run the health check:
+
+```powershell
+.\check-network-health.ps1 -NodeCount 5 -Watch
+```
+
+Press `Ctrl+C` to exit once all 5 nodes show `BeaconSyncing = False` and `GethPeers > 0`.
+
+Also verify all nodes are on the same head block:
+
+```powershell
+node test_5node_sync.js
+```
+
+Expected output:
+
+```text
+Node 1 (port 18545): block 24 - OK
+Node 2 (port 18546): block 24 - OK
+Node 3 (port 18547): block 24 - OK
+Node 4 (port 18548): block 24 - OK
+Node 5 (port 18549): block 24 - OK
+All reachable nodes are in sync.
+```
+
+### 3. Import accounts into MetaMask
+
+Open `metamask-wallets.csv` and import the private keys for Node 1 and Node 2:
+
+1. In MetaMask: account menu → **Import account** → paste Node 1 private key → rename to `Node 1 Wallet`.
+2. Repeat for Node 2 and rename to `Node 2 Wallet`.
+
+Add the custom network in MetaMask:
+
+| Setting | Value |
+|---|---|
+| Network name | `Local PoS Devnet` |
+| New RPC URL | `http://127.0.0.1:18545` |
+| Chain ID | `12345` |
+| Currency symbol | `ETH` |
+
+### 4. Send a transaction via MetaMask
+
+1. Select `Node 1 Wallet` in MetaMask.
+2. Click **Send**.
+3. Paste the `Node 2 Wallet` address.
+4. Enter an amount, e.g. `10` ETH, and confirm.
+5. Wait ~12–24 seconds for the next block.
+
+You can also use the local wallet page:
+
+```powershell
+start metamask-wallet.html
+```
+
+Select the Node 1 RPC, connect, and send to the Node 2 address.
+
+### 5. Verify propagation across all 5 nodes
+
+Run the automated test script:
+
+```powershell
+# Send 10 ETH from Node 1 wallet to Node 2 wallet via Node 3 RPC
+$env:SENDER_NODE = 1
+$env:RECIPIENT_NODE = 2
+$env:RPC_NODE = 3
+$env:AMOUNT_ETH = 10
+node test_metamask_tx.js
+```
+
+Expected output:
+
+```text
+RPC node: http://127.0.0.1:18547 (Node 3)
+Sender (Node 1): 0x...
+Recipient (Node 2): 0x...
+
+--- Balances before ---
+Sender balance: 100000.0 ETH
+Recipient balance: 100000.0 ETH
+
+Sending 10 ETH...
+Transaction hash: 0x...
+Mined in block: 31
+
+--- Cross-node balance verification ---
+Node 1 (port 18545) -> sender: 99989.999968499999853 ETH, recipient: 100010.0 ETH
+Node 2 (port 18546) -> sender: 99989.999968499999853 ETH, recipient: 100010.0 ETH
+Node 3 (port 18547) -> sender: 99989.999968499999853 ETH, recipient: 100010.0 ETH
+Node 4 (port 18548) -> sender: 99989.999968499999853 ETH, recipient: 100010.0 ETH
+Node 5 (port 18549) -> sender: 99989.999968499999853 ETH, recipient: 100010.0 ETH
+```
+
+All 5 nodes should show the same balances, proving the transaction was included in a PoS block and propagated across the network.
+
+### 6. Verify via MetaMask
+
+1. Switch MetaMask to `Node 2 Wallet`.
+2. Refresh the balance — it should show `100010` ETH.
+3. Optionally switch the RPC URL to `http://127.0.0.1:18549` (Node 5). The balance should be identical.
+
+### Automated end-to-end run
+
+To run the entire 5-node PoS + MetaMask test in one command:
+
+```powershell
+.\run-5node-metamask-test.ps1
+```
+
+This script stops old processes, generates 5 wallets, starts the devnet, waits for blocks, sends a cross-node transaction, verifies propagation, and stops the network. A detailed execution report is written to `5_pos_metamask.md` and a full log to `5node-metamask-test.log`.
+
+---
+
 ## Network Keypair Reference
 
 | Item | Value / Index | Notes |
@@ -1031,11 +1386,11 @@ This demonstrates that ETH moves from one address to another on the shared ledge
 
 ## Notes
 
-- **Three node:** ten processes must stay running — 3 Geth, 3 beacon, 3 validator, plus your verification shell.
-- Use separate PowerShell windows for each process.
-- HTTP RPC runs on ports `18545`, `18546`, `18547`.
-- Engine API uses ports `8551`, `8552`, `8553` with JWT auth.
-- Beacon gRPC uses ports `4000`, `4001`, `4002`; REST gateways use `3500`, `3501`, `3502`.
+- **N nodes:** `3N` processes must stay running — N Geth, N beacon, N validator, plus your verification shell.
+- Use separate PowerShell windows for each process when starting manually.
+- HTTP RPC runs on ports `18545`, `18546`, `18547`, ... `18544 + N`.
+- Engine API uses ports `8551`, `8552`, `8553`, ... `8550 + N` with JWT auth.
+- Beacon gRPC uses ports `4000`, `4001`, `4002`, ... `3999 + N`; REST gateways use `3500`, `3501`, `3502`, ... `3499 + N`.
 - Each Geth node needs a unique `--ipcpath` in multi-node mode to avoid pipe conflicts.
 - The `password-clean` file must be plain ASCII with no BOM; `Out-File -Encoding ASCII -NoNewline` creates this correctly.
 - This is a local devnet. Do not use it for production.
@@ -1092,12 +1447,28 @@ Fetch Node 1's enode and use `--bootnodes` on Nodes 2/3, or use `admin.addPeer` 
 ### `Fatal: Error starting protocol stack: open \.	ubeackslashgeth.ipc: Access is denied`
 You are running multiple Geth nodes without unique `--ipcpath` values. Add `--ipcpath geth1.ipc`, `--ipcpath geth2.ipc`, and `--ipcpath geth3.ipc` to each node respectively.
 
+### MetaMask shows "Unable to connect" or wrong chain ID
+1. Make sure the selected Geth node is running and its HTTP port is reachable:
+   ```powershell
+   Invoke-RestMethod -Uri 'http://127.0.0.1:18545' -Method POST -ContentType 'application/json' -Body '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+   ```
+2. Try another node's RPC URL (MetaMask can only use one at a time).
+3. Ensure the Geth startup flags include `--http.corsdomain=* --http.vhosts=* --http.addr 127.0.0.1`.
+4. If you restarted the devnet with a new genesis, reset MetaMask's account activity for this network: MetaMask → Settings → Advanced → Clear activity tab data.
+
+### MetaMask balance does not update after a transaction
+Wait 12–24 seconds for the next block to be produced. The devnet uses 12-second slots. If it still does not update, switch the RPC URL to another node or refresh the page.
+
 ### Want a fresh start
-Stop all processes, then delete:
-- `node1\geth`, `node2\geth`, `node3\geth`
-- `beacondata1`, `beacondata2`, `beacondata3`
-- `validator_wallet1`, `validator_wallet2`, `validator_wallet3`
-- `%LOCALAPPDATA%\Eth2`
+
+Stop all processes, then delete state for all nodes:
+
+```powershell
+.\stop-network.ps1
+.\clean-state.ps1 -NodeCount 6
+```
+
+This removes `node$i\geth`, `beacondata$i`, `validator_wallet$i`, `genesis.ssz`, `genesis-pos.json`, logs, and the Prysm slashing DB. Keystore directories and `wallet_setup/` are preserved.
 
 Then repeat from the genesis generation step.
 
@@ -1105,30 +1476,41 @@ Then repeat from the genesis generation step.
 
 ## Expanding the Network: Create Any Number of Nodes
 
-The 3-node setup is just an example. You can create a network with **any number of nodes** by following a general pattern. The rules are:
+The 3-node setup is just an example. You can create a network with **any number of nodes** by changing the `NodeCount` parameter in the one-click scripts, or by following the general pattern below. The rules are:
 
 1. Each Geth node needs a unique datadir, P2P port, HTTP port, Engine API port, and IPC pipe.
 2. Each beacon node needs a unique datadir, gRPC port, REST port, P2P ports, and one `--peer` pointing to the bootstrap node.
-3. Each validator needs its own imported wallet directory and password file.
+3. Each validator needs its own imported wallet directory and password file (wallet-based) or its own `--interop-start-index` (interop).
 4. To have `V` validators active from genesis, generate `V` wallet-based keystores + deposit data, then regenerate `genesis.ssz` with `--deposit-json-file` and `--num-validators=0`.
+
+The easiest path is to use the scripts at the top of this guide:
+
+```powershell
+# Interop validators (recommended for testing)
+.\start-interop-network.ps1 -NodeCount 6
+
+# Wallet-based validators
+.\start-wallet-network-n.ps1 -NodeCount 6
+```
+
+The rest of this section shows the manual equivalent for learning and customization.
 
 ### Stop everything
 
 ```powershell
-Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator') } | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 3
+.\stop-network.ps1
 ```
 
 ### Choose your node count
 
-Pick a total number of nodes `N` (for example `N=5`). This creates Nodes 1 through 5.
+Pick a total number of nodes `N` (for example `N=6`). This creates Nodes 1 through N.
 
 ### Create a Node directory and account for each new node
 
 For every new node `i` from `1` to `N`:
 
 ```powershell
-$N = 5
+$N = 6
 for ($i = 1; $i -le $N; $i++) {
     New-Item -ItemType Directory -Path "node$i" -Force
     "node$i" | Out-File -FilePath "node$i\password-clean" -Encoding ASCII -NoNewline
@@ -1222,7 +1604,7 @@ $gethIpc = "geth$i.ipc"
 # Node 1 starts without --bootnodes. Other nodes boot from Node 1.
 $bootnodes = if ($i -eq 1) { "" } else { "--bootnodes `"$env:NODE1_ENODE`"" }
 
-$cmd = ".\geth.exe --datadir node$i --port $gethP2P --networkid 123454321 --syncmode full --state.scheme hash " +
+$cmd = ".\geth.exe --datadir node$i --port $gethP2P --networkid 12345 --syncmode full --state.scheme hash " +
        "--http --http.port $gethHttp --http.api eth,net,web3,engine,admin --http.corsdomain=* --http.vhosts=* --http.addr 127.0.0.1 " +
        "--authrpc.port $gethAuth --authrpc.addr 127.0.0.1 --authrpc.vhosts=* --authrpc.jwtsecret jwt.hex --ipcpath $gethIpc $bootnodes"
 
@@ -1298,9 +1680,11 @@ $beaconGrpc = 3999 + $i
 
 ## Architecture
 
+The diagram below shows the 3-node example. The same layered structure scales to any number of nodes: each Geth pairs with one beacon node, each beacon node pairs with one validator, and all Geth nodes peer with each other while all beacon nodes peer via libp2p.
+
 ```
         ┌──────────┐        ┌──────────┐        ┌──────────┐
-        │ Geth 1   │◄──────►│ Geth 2   │◄──────►│ Geth 3   │
+        │ Geth 1   │◄──────►│ Geth 2   │◄──────►│ Geth 3   │ ... (N nodes)
         │:18545    │  p2p   │:18546    │  p2p   │:18547    │
         └────┬─────┘        └────┬─────┘        └────┬─────┘
              │ Engine API        │ Engine API        │ Engine API
@@ -1315,6 +1699,8 @@ $beaconGrpc = 3999 + $i
         │Validator1│        │Validator2│        │Validator3│
         └──────────┘        └──────────┘        └──────────┘
 ```
+
+For an arbitrary number of nodes, use the port formulas in the **Port Reference** table and the one-click scripts (`start-interop-network.ps1` or `start-wallet-network-n.ps1`).
 
 ---
 

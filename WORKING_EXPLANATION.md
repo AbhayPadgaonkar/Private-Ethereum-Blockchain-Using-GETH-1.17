@@ -110,11 +110,11 @@ Validators are identified by a public key (a BLS12-381 pubkey). Each validator h
 - A **withdrawal credential**
 - A **32 ETH effective balance** baked into genesis
 
-The validator process reads its keys from a **Prysm wallet** (`validator_wallet1`, `validator_wallet2`, `validator_wallet3`). Each validator process must have its own wallet and its own `--datadir`, because Prysm keeps a slashing-protection database there. Running two validators with the same `--datadir` would lock the database and could cause double-signing.
+The validator process reads its keys from a **Prysm wallet** (`validator_wallet1`, `validator_wallet2`, `validator_wallet3`, ...). Each validator process must have its own wallet and its own `--datadir`, because Prysm keeps a slashing-protection database there. Running two validators with the same `--datadir` would lock the database and could cause double-signing.
 
 ---
 
-## Why Three Nodes?
+## Why Multiple Nodes?
 
 Ethereum PoS needs enough validators to reach consensus. A single validator can technically run a chain, but it cannot demonstrate:
 
@@ -128,7 +128,9 @@ With three validators (the minimum practical number), we can show:
 - Nodes 2 and 3 can start after Node 1 and sync blocks
 - Transactions propagate through execution-layer peering
 
-**Trade-off:** This is still a tiny network. Three validators is enough for a devnet but would be insecure for production.
+**Scaling to N nodes:** The same pattern generalizes. With `N` validators, proposer duties rotate through indices `0` to `N-1`. More nodes consume more RAM/CPU but make the devnet look more like a real network. The one-click scripts (`start-interop-network.ps1`, `start-wallet-network-n.ps1`) and `check-network-health.ps1` handle the port arithmetic and startup ordering for any `N`.
+
+**Trade-off:** This is still a tiny network. A handful of validators is enough for a devnet but would be insecure for production.
 
 ---
 
@@ -143,8 +145,8 @@ Starting the chain is a multi-step dance:
 2. **Import keystores** into three separate Prysm wallets.
 
 3. **Generate the beacon genesis state** with `prysmctl`. This:
-   - Reads `deposit_data.json`
-   - Creates `genesis.ssz` — the initial beacon state with your 3 validators
+   - Reads `deposit_data.json` (wallet-based) or uses `--num-validators=N` (interop)
+   - Creates `genesis.ssz` — the initial beacon state with your N validators
    - Creates `genesis-pos.json` — the Geth genesis with correct PoS fork settings
 
 4. **Initialize Geth datadirs** with `geth init`. This writes the genesis block into each Geth database.
@@ -153,7 +155,7 @@ Starting the chain is a multi-step dance:
 
 6. **At genesis time**, validator 0 proposes the first block. The chain starts.
 
-7. **Start Nodes 2 and 3.** They connect to Node 1 and sync execution + consensus history.
+7. **Start Nodes 2..N.** They connect to Node 1 and sync execution + consensus history.
 
 ---
 
@@ -162,13 +164,23 @@ Starting the chain is a multi-step dance:
 ### Clean previous state
 
 ```powershell
-Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator') } | Stop-Process -Force -ErrorAction SilentlyContinue
+.\clean-state.ps1 -NodeCount 6
+```
+
+Or manually:
+
+```powershell
+Get-Process | Where-Object { $_.ProcessName -in @('geth','beacon-chain','validator','prysmctl') } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
 
-@('node1/geth','node2/geth','node3/geth','beacondata1','beacondata2','beacondata3','validator_wallet1','validator_wallet2','validator_wallet3') | ForEach-Object {
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $_
+$N = 6
+for ($i = 1; $i -le $N; $i++) {
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "node$i/geth"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "beacondata$i"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "validator_wallet$i"
 }
 Remove-Item -Force *.log -ErrorAction SilentlyContinue
+Remove-Item -Force genesis.ssz, genesis-pos.json -ErrorAction SilentlyContinue
 ```
 
 **Plain:** Kill old processes and delete old data so we start fresh.

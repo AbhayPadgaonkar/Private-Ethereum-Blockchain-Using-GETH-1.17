@@ -1,10 +1,19 @@
 # Staking deposit CLI downloads
 staking-deposit-cli*.zip
+staking-deposit-cli*.tar.gz
 staking_deposit-cli-*/
 staking-deposit-cli-*/
 
 # Generated validator keys and passwords (NEVER commit these)
 wallet_setup/
+validator_wallet*/
+
+# Generated MetaMask wallet files with private keys
+metamask-wallets.json
+metamask-wallets.csv
+
+# Test execution logs
+5node-metamask-test.log
 
 # Binaries
 *.exe
@@ -13,14 +22,25 @@ wallet_setup/
 node*/geth/
 node*/blobpool/
 node*/password
+**/node*/
+
+# Entire node directories (runtime data only)
+private_ethereum_setup/node1/
+private_ethereum_setup/node2/
+private_ethereum_setup/node3/
 
 # Prysm runtime data
 beacondata*/
+
+# Generated genesis / state files
+private_ethereum_setup/genesis-pos.json
+private_ethereum_setup/genesis.ssz
 
 # Generated runtime files
 *.log
 *.ipc
 .beacon*
+test_pids.txt
 
 # Node.js
 node_modules/
