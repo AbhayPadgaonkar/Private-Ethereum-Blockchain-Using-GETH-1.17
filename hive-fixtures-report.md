@@ -64,8 +64,10 @@ The two failures were test timeouts (`Invalid Transition Payload` and one Shangh
 
 None of the failures indicate a consensus or block-processing bug in the local client. They are caused by:
 
-1. **Missing newer RPC methods.** `eth_baseFee`, `eth_capabilities`, and `eth_simulateV1` were added in later Geth releases.
+1. **Missing newer RPC methods.** `eth_baseFee`, `eth_capabilities`, and `eth_simulateV1` were added to Geth after the v1.17.3 release used by this devnet.
 2. **Default-block fixture mismatch.** The fixtures assume a specific behavior for omitted block tags that does not match Geth 1.17.3 defaults on the synthetic test chain.
+
+**Why not 100%?** The upstream Hive fixtures are maintained against the latest Ethereum client versions and network rules. Running them against an intentionally pinned older client (Geth 1.17.3) will always produce some method/semantics mismatches. The failures are expected and do not affect the correctness of the local private PoS network.
 
 **Recommendation:** Accept these 15 failures as expected for Geth 1.17.3.
 
@@ -137,7 +139,7 @@ These changes are local-only (dirty working tree) and do not affect consensus se
 ## 6. Conclusion
 
 - **Geth v1.17.3 passes all consensus-critical Hive fixtures** (engine + sync).
-- **RPC compatibility is acceptable** for a v1.17.3 node; newer methods are legitimately absent.
+- **RPC compatibility is acceptable** for a v1.17.3 node; newer methods are legitimately absent because the fixtures target later client versions.
 - **End-to-end PoS interop was verified manually on 5 nodes** (see `report_pos_5.md`), including transaction propagation.
 - **Hive `eth2/testnet` automation is blocked** by a config-generation incompatibility with Prysm v7.1.0 and should be revisited with a simulator patch.
 
